@@ -1,0 +1,41 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+      # (Optional) nếu sau này bạn cần region kiểu S3:
+      # MINIO_REGION: us-east-1
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Init job: dùng MinIO Client (mc) để tạo bucket "lake"
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+      mc mb -p local/lake || true &&
+      mc anonymous set none local/lake || true &&
+      echo '✅ Bucket lake is ready' &&
+      exit 0
+      "
+
+volumes:
+  minio_data:

@@ -1,0 +1,160 @@
+services:
+  # -------------------------
+  # MinIO (S3 compatible)
+  # -------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Tạo bucket tự động: lake + iot-time-series
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin123 &&
+      mc mb -p local/lake || true &&
+      mc mb -p local/iot-time-series || true &&
+      mc anonymous set none local/lake || true &&
+      mc anonymous set none local/iot-time-series || true &&
+      echo '✅ Buckets ready: lake, iot-time-series' &&
+      exit 0
+      "
+
+  # -------------------------
+  # PostgreSQL for Hive Metastore
+  # -------------------------
+  metastore-db:
+    image: postgres:17
+    container_name: metastore-db
+    hostname: metastore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - metastore_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # -------------------------
+  # Hive Metastore (Standalone)
+  # -------------------------
+  hive-metastore:
+    image: starburstdata/hive:3.1.2-e.18
+    container_name: hive-metastore
+    hostname: hive-metastore
+    restart: unless-stopped
+    ports:
+      - "9083:9083"  # Thrift
+    environment:
+      HIVE_METASTORE_DRIVER: org.postgresql.Driver
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
+      HIVE_METASTORE_USER: hive
+      HIVE_METASTORE_PASSWORD: hive_password
+
+      # S3/MinIO
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+      S3_PATH_STYLE_ACCESS: "true"
+
+      # Các biến “rỗng” để image này không complain
+      REGION: ""
+      GOOGLE_CLOUD_KEY_FILE_PATH: ""
+      AZURE_ADL_CLIENT_ID: ""
+      AZURE_ADL_CREDENTIAL: ""
+      AZURE_ADL_REFRESH_URL: ""
+      AZURE_ABFS_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_ACCESS_KEY: ""
+      AZURE_WASB_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_OAUTH: ""
+      AZURE_ABFS_OAUTH_TOKEN_PROVIDER: ""
+      AZURE_ABFS_OAUTH_CLIENT_ID: ""
+      AZURE_ABFS_OAUTH_SECRET: ""
+      AZURE_ABFS_OAUTH_ENDPOINT: ""
+      AZURE_WASB_ACCESS_KEY: ""
+    depends_on:
+      metastore-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9083"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # -------------------------
+  # Trino (Coordinator + Worker)
+  # -------------------------
+  trino-coordinator:
+    image: trinodb/trino:470
+    container_name: trino-coordinator
+    hostname: trino-coordinator
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/coordinator/etc:/etc/trino:ro
+      - ./trino/catalog:/etc/trino/catalog:ro
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  trino-worker:
+    image: trinodb/trino:470
+    container_name: trino-worker
+    hostname: trino-worker
+    restart: unless-stopped
+    depends_on:
+      trino-coordinator:
+        condition: service_healthy
+    volumes:
+      - ./trino/worker/etc:/etc/trino:ro
+      - ./trino/catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  default:
+    name: infra_datalake
+
+volumes:
+  minio_data:
+  metastore_db_data:

@@ -1,0 +1,39 @@
+# chạy: docker compose -p infra-trino up -d
+
+version: "3.9"
+
+services:
+  trino-coordinator:
+    image: trinodb/trino:470
+    container_name: trino-coordinator
+    hostname: trino-coordinator
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # Trino HTTP endpoint
+    volumes:
+      - ./trino/coordinator/etc:/etc/trino:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  trino-worker:
+    image: trinodb/trino:470
+    container_name: trino-worker
+    hostname: trino-worker
+    restart: unless-stopped
+    depends_on:
+      trino-coordinator:
+        condition: service_healthy
+    volumes:
+      - ./trino/worker/etc:/etc/trino:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  default:
+    name: infra_trino
