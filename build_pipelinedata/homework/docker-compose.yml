@@ -65,6 +65,40 @@ services:
   # -------------------------
   # Hive Metastore (Standalone)
   # -------------------------
+  hms-schema-init:
+    image: starburstdata/hive:3.1.2-e.18
+    container_name: hms-schema-init
+    depends_on:
+      metastore-db:
+        condition: service_healthy
+    environment:
+      HIVE_METASTORE_DRIVER: org.postgresql.Driver
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
+      HIVE_METASTORE_USER: hive
+      HIVE_METASTORE_PASSWORD: hive_password
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+      S3_PATH_STYLE_ACCESS: "true"
+      REGION: ""
+      GOOGLE_CLOUD_KEY_FILE_PATH: ""
+      AZURE_ADL_CLIENT_ID: ""
+      AZURE_ADL_CREDENTIAL: ""
+      AZURE_ADL_REFRESH_URL: ""
+      AZURE_ABFS_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_ACCESS_KEY: ""
+      AZURE_WASB_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_OAUTH: ""
+      AZURE_ABFS_OAUTH_TOKEN_PROVIDER: ""
+      AZURE_ABFS_OAUTH_CLIENT_ID: ""
+      AZURE_ABFS_OAUTH_SECRET: ""
+      AZURE_ABFS_OAUTH_ENDPOINT: ""
+      AZURE_WASB_ACCESS_KEY: ""
+    entrypoint: >
+      /bin/bash -lc "
+      schematool -dbType postgres -initSchema --verbose || true;
+      exit 0
+      "
   hive-metastore:
     image: starburstdata/hive:3.1.2-e.18
     container_name: hive-metastore
@@ -106,11 +140,13 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      hms-schema-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 9083"]
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/localhost/9083'"]
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   # -------------------------
   # Trino (Coordinator + Worker)
@@ -124,15 +160,16 @@ services:
       - "8080:8080"
     volumes:
       - ./trino/coordinator/etc:/etc/trino:ro
-      - ./trino/catalog:/etc/trino/catalog:ro
     depends_on:
       hive-metastore:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info >/dev/null"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
+      start_period: 30s
+
 
   trino-worker:
     image: trinodb/trino:470
@@ -144,12 +181,13 @@ services:
         condition: service_healthy
     volumes:
       - ./trino/worker/etc:/etc/trino:ro
-      - ./trino/catalog:/etc/trino/catalog:ro
     healthcheck:
-      test: ["CMD-SHELL", "/usr/lib/trino/bin/health-check"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info >/dev/null"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
+      start_period: 30s
+
 
 networks:
   default:
