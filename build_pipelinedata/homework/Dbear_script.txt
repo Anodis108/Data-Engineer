@@ -1,0 +1,95 @@
+# chạy từng lệnh
+SHOW SCHEMAS FROM hive;
+
+CREATE SCHEMA IF NOT EXISTS hive.iot_dw
+WITH (location = 's3://iot-time-series/iot_dw/');
+
+DROP TABLE IF EXISTS hive.iot_dw.pump;
+
+CREATE TABLE hive.iot_dw.pump (
+  event_timestamp timestamp,
+  pressure double,
+  velocity double,
+  speed double
+)
+WITH (
+  format = 'PARQUET',
+  external_location = 's3://iot-time-series/pump/'
+);
+
+
+SELECT count(*) FROM hive.iot_dw.pump;
+
+--thống kê 
+SELECT COUNT(*) AS cnt_pressure_over_150
+FROM hive.iot_dw.pump
+WHERE pressure > 150;
+
+SELECT * FROM hive.iot_dw.pump
+ORDER BY event_timestamp DESC
+LIMIT 10;
+
+-- test alarm: spike pressure
+SELECT *
+FROM hive.iot_dw.pump
+WHERE pressure > 150
+ORDER BY pressure DESC
+LIMIT 20;
+
+-- aggregate theo ngày
+SELECT date(event_timestamp) as d,
+       count(*) as n,
+       avg(pressure) as avg_pressure,
+       max(pressure) as max_pressure
+FROM hive.iot_dw.pump
+GROUP BY 1
+ORDER BY 1;
+
+--liệt kê các điểm vượt ngưỡng
+SELECT
+  event_timestamp,
+  pressure,
+  speed
+FROM hive.iot_dw.pump
+WHERE pressure > 150
+ORDER BY event_timestamp;
+
+--gom thành các đoạn liên tục
+WITH flagged AS (
+  SELECT
+    event_timestamp,
+    pressure,
+    CASE WHEN pressure > 150 THEN 1 ELSE 0 END AS is_alarm
+  FROM hive.iot_dw.pump
+),
+only_alarm AS (
+  SELECT
+    event_timestamp,
+    pressure,
+    date_diff(
+      'minute',
+      lag(event_timestamp) OVER (ORDER BY event_timestamp),
+      event_timestamp
+    ) AS gap_min
+  FROM flagged
+  WHERE is_alarm = 1
+),
+grp AS (
+  SELECT
+    event_timestamp,
+    pressure,
+    sum(CASE WHEN gap_min IS NULL OR gap_min > 1 THEN 1 ELSE 0 END)
+      OVER (ORDER BY event_timestamp) AS alarm_group
+  FROM only_alarm
+)
+SELECT
+  min(event_timestamp) AS alarm_start,
+  max(event_timestamp) AS alarm_end,
+  count(*) AS points,
+  max(pressure) AS max_pressure
+FROM grp
+GROUP BY alarm_group
+ORDER BY alarm_start;
+
+
+
