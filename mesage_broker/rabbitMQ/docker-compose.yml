@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  rabbitmq1:
+    image: rabbitmq:3-management
+    container_name: rabbitmq1
+    hostname: rabbitmq1
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    volumes:
+      - rabbitmq1_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq2:
+    image: rabbitmq:3-management
+    container_name: rabbitmq2
+    hostname: rabbitmq2
+    restart: unless-stopped
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    volumes:
+      - rabbitmq2_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Service join cluster: chạy 1 lần rồi exit
+  rabbitmq2-join:
+    image: rabbitmq:3-management
+    container_name: rabbitmq2-join
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+      rabbitmq2:
+        condition: service_healthy
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    entrypoint: >
+      bash -lc "
+        set -e
+        echo '⏳ Joining rabbitmq2 -> cluster rabbitmq1...'
+
+        rabbitmqctl -n rabbit@rabbitmq2 stop_app
+        rabbitmqctl -n rabbit@rabbitmq2 reset
+        rabbitmqctl -n rabbit@rabbitmq2 join_cluster rabbit@rabbitmq1
+        rabbitmqctl -n rabbit@rabbitmq2 start_app
+
+        echo '✅ Joined.'
+        rabbitmqctl -n rabbit@rabbitmq1 cluster_status
+      "
+    restart: "no"
+
+volumes:
+  rabbitmq1_data:
+  rabbitmq2_data:
