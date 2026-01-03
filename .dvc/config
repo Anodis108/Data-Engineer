@@ -1,5 +1,7 @@
 [core]
     autostage = true
-    remote = mygdrive
+    remote = localstore
 ['remote "mygdrive"']
     url = gdrive://1wHsT0UJ_7AlFNzAR_9xmTzdo9laVW
+['remote "localstore"']
+    url = ../dvc-storage
