@@ -1,0 +1,6 @@
+outs:
+- md5: 165868dc1c8e7a413536c1da91859f94.dir
+  size: 0
+  nfiles: 1
+  hash: md5
+  path: customers
