@@ -1,0 +1,7 @@
+stages:
+  cdc_customers_to_jsonl:
+    cmd: python scripts/cdc_to_jsonl.py
+    deps:
+    - scripts/cdc_to_jsonl.py
+    outs:
+    - lake/raw/cdc/customers
