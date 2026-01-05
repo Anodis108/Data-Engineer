@@ -1,0 +1,13 @@
+stages:
+  cdc_customers_to_jsonl:
+    cmd: python scripts/cdc_to_jsonl.py --seconds 30 --out lake/raw/cdc/customers
+    deps:
+      - scripts/cdc_to_jsonl.py
+    outs:
+      - lake/raw/cdc/customers
+
+  upload_cdc_to_minio:
+    cmd: python scripts/upload_cdc_to_minio.py --local lake/raw/cdc --bucket lake --prefix raw/cdc
+    deps:
+      - scripts/upload_cdc_to_minio.py
+      - lake/raw/cdc/customers
