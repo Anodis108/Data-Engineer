@@ -1,0 +1,6 @@
+pandas
+numpy
+pyarrow
+minio
+kafka-python
+dvc[s3]

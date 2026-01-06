@@ -1,0 +1,9 @@
+{
+    "check_people": {
+        "weight": "resource/weights/yolo11s.pt",
+        "classes": [0],
+        "imgsz": 640,
+        "conf": 0.3,
+        "device": 0
+    }
+}

@@ -1,0 +1,4 @@
+app_name: "Fighting Detection System"
+debug_mode: true
+log_level: "INFO"
+video_source: "resource/data/danh_nhau.mp4"
