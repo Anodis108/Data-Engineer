@@ -292,3 +292,10 @@ SELECT * FROM public.customers;
 
 ## 7) Ghi chú
 Repo phục vụ học tập và demo pipeline production-like.
+
+Sơ đồ tư duy tổng hợp:
+- Dữ liệu sinh ra từ đâu? -> cdc-postgres (nghiệp vụ) và Code Python (camera).
+- Dữ liệu đi đường nào? -> Đi qua kafka (CDC) hoặc rabbitmq (Alerts).
+- Dữ liệu nằm ở đâu? -> Nằm hết trong minio (S3).
+- Làm sao tìm thấy dữ liệu? -> Nhờ hive-metastore chỉ đường.
+- Làm sao lấy dữ liệu ra báo cáo? -> Dùng trino viết SQL.
