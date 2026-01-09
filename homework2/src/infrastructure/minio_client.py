@@ -185,3 +185,189 @@ class MinioRepository:
         except S3Error as e:
             logger.error(f"Failed to upload events: {e}")
             return None
+    
+    def list_buckets(self) -> list[str]:
+        """List all available buckets."""
+        if not self.is_connected:
+            return []
+        
+        try:
+            buckets = self._client.list_buckets()
+            return [b.name for b in buckets]
+        except S3Error as e:
+            logger.error(f"Failed to list buckets: {e}")
+            return []
+    
+    def list_objects(
+        self,
+        prefix: str = "",
+        bucket: Optional[str] = None,
+        max_keys: int = 100
+    ) -> list[dict]:
+        """
+        List objects in bucket with given prefix.
+        
+        Args:
+            prefix: Object key prefix to filter
+            bucket: Bucket name (default: configured bucket)
+            max_keys: Maximum number of objects to return
+            
+        Returns:
+            List of object metadata dicts
+        """
+        if not self.is_connected:
+            return []
+        
+        bucket = bucket or self.bucket
+        
+        try:
+            objects = []
+            count = 0
+            
+            for obj in self._client.list_objects(bucket, prefix=prefix, recursive=False):
+                if count >= max_keys:
+                    break
+                
+                objects.append({
+                    "name": obj.object_name,
+                    "size": obj.size or 0,
+                    "last_modified": obj.last_modified,
+                    "is_dir": obj.is_dir,
+                    "etag": obj.etag
+                })
+                count += 1
+            
+            return objects
+            
+        except S3Error as e:
+            logger.error(f"Failed to list objects: {e}")
+            return []
+    
+    def get_object_content(
+        self,
+        object_name: str,
+        bucket: Optional[str] = None
+    ) -> Optional[bytes]:
+        """
+        Get raw content of an object.
+        
+        Args:
+            object_name: Object key
+            bucket: Bucket name (default: configured bucket)
+            
+        Returns:
+            Object content as bytes, or None if failed
+        """
+        if not self.is_connected:
+            return None
+        
+        bucket = bucket or self.bucket
+        
+        try:
+            response = self._client.get_object(bucket, object_name)
+            data = response.read()
+            response.close()
+            response.release_conn()
+            return data
+        except S3Error as e:
+            logger.error(f"Failed to get object: {e}")
+            return None
+    
+    def preview_parquet(
+        self,
+        object_name: str,
+        bucket: Optional[str] = None,
+        max_rows: int = 100
+    ) -> Optional[pd.DataFrame]:
+        """
+        Preview content of a Parquet file.
+        
+        Args:
+            object_name: Object key (must be .parquet file)
+            bucket: Bucket name (default: configured bucket)
+            max_rows: Maximum rows to return
+            
+        Returns:
+            DataFrame with preview, or None if failed
+        """
+        if not self.is_connected:
+            return None
+        
+        content = self.get_object_content(object_name, bucket)
+        if content is None:
+            return None
+        
+        try:
+            buffer = io.BytesIO(content)
+            table = pq.read_table(buffer)
+            df = table.to_pandas()
+            return df.head(max_rows)
+        except Exception as e:
+            logger.error(f"Failed to read Parquet: {e}")
+            return None
+    
+    def get_object_url(
+        self,
+        object_name: str,
+        bucket: Optional[str] = None,
+        expires_hours: int = 1
+    ) -> Optional[str]:
+        """
+        Generate presigned URL for object download.
+        
+        Args:
+            object_name: Object key
+            bucket: Bucket name (default: configured bucket)
+            expires_hours: URL expiration time in hours
+            
+        Returns:
+            Presigned URL, or None if failed
+        """
+        if not self.is_connected:
+            return None
+        
+        bucket = bucket or self.bucket
+        
+        try:
+            from datetime import timedelta
+            url = self._client.presigned_get_object(
+                bucket,
+                object_name,
+                expires=timedelta(hours=expires_hours)
+            )
+            return url
+        except S3Error as e:
+            logger.error(f"Failed to generate presigned URL: {e}")
+            return None
+    
+    def get_bucket_stats(self, bucket: Optional[str] = None) -> dict:
+        """
+        Get statistics about bucket contents.
+        
+        Args:
+            bucket: Bucket name (default: configured bucket)
+            
+        Returns:
+            Dict with object count and total size
+        """
+        if not self.is_connected:
+            return {"object_count": 0, "total_size": 0}
+        
+        bucket = bucket or self.bucket
+        
+        try:
+            total_size = 0
+            object_count = 0
+            
+            for obj in self._client.list_objects(bucket, recursive=True):
+                object_count += 1
+                total_size += obj.size or 0
+            
+            return {
+                "object_count": object_count,
+                "total_size": total_size,
+                "total_size_mb": round(total_size / (1024 * 1024), 2)
+            }
+        except S3Error as e:
+            logger.error(f"Failed to get bucket stats: {e}")
+            return {"object_count": 0, "total_size": 0}

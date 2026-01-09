@@ -1,6 +1,8 @@
 # Presentation Layer - UI and detection components
+#
+# Use explicit imports:
+#   from src.presentation.detector import PersonDetector
+#   from src.presentation.main_loop import VisionApp
 
-from src.presentation.detector import PersonDetector
-from src.presentation.main_loop import VisionApp
+__all__ = []
 
-__all__ = ["PersonDetector", "VisionApp"]
