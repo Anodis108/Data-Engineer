@@ -113,7 +113,7 @@ class MinioRepository:
             logger.debug(f"Uploaded frame: {uri}")
             return uri
             
-        except S3Error as e:
+        except Exception as e:
             logger.error(f"Failed to upload frame: {e}")
             return None
     
@@ -182,7 +182,7 @@ class MinioRepository:
             logger.info(f"Uploaded {len(events)} events: {uri}")
             return uri
             
-        except S3Error as e:
+        except Exception as e:
             logger.error(f"Failed to upload events: {e}")
             return None
     

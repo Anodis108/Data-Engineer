@@ -120,7 +120,7 @@ class RabbitMQPublisher:
             logger.debug(f"Published alert: {routing_key} -> {payload.event_id}")
             return True
             
-        except AMQPChannelError as e:
+        except Exception as e:
             logger.error(f"Failed to publish alert: {e}")
             return False
     

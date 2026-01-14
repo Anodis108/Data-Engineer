@@ -48,8 +48,10 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
         # Capture background
         if st.button("📸 Capture Background Frame"):
             import platform
+            # Add delay to ensure resource release if streaming was active
+            time.sleep(0.5)
             backend = cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
-            cap = cv2.VideoCapture(config.camera_index + backend)
+            cap = cv2.VideoCapture(config.camera_index, backend)
             if not cap.isOpened():
                 cap = cv2.VideoCapture(config.camera_index)
             
@@ -105,8 +107,12 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
             
             if new_poly and new_poly != ss.polygon:
                 ss.polygon = new_poly
-                save_polygon(ss.polygon)
-                st.success(f"✅ Polygon saved: {len(new_poly)} points")
+                try:
+                    save_polygon(ss.polygon)
+                    st.success(f"✅ Polygon saved: {len(new_poly)} points")
+                except Exception as e:
+                    logger.error(f"Failed to save polygon: {e}")
+                    st.error(f"❌ Failed to save polygon: {e}")
         
         # Current polygon info
         if ss.polygon:
@@ -139,15 +145,13 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     from src.application.use_cases import HandleVisionEventUseCase
     
     # Initialize detector
-    @st.cache_resource
-    def get_detector():
-        return PersonDetector(
-            model_path=config.model_path,
-            conf_threshold=config.conf_threshold,
-            polygon=ss.polygon
-        )
-    
-    detector = get_detector()
+    # Initialize detector directly (no caching to avoid thread-safety/fusion issues)
+    # This fixes the "AttributeError: 'Conv' object has no attribute 'bn'"
+    detector = PersonDetector(
+        model_path=config.model_path,
+        conf_threshold=config.conf_threshold,
+        polygon=ss.polygon
+    )
     detector.set_polygon(ss.polygon)
     
     aggregator = EventAggregator(
@@ -173,7 +177,7 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     import platform
     backend = cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
     
-    cap = cv2.VideoCapture(config.camera_index + backend)
+    cap = cv2.VideoCapture(config.camera_index, backend)
     
     if not cap.isOpened():
         # Fallback to default backend if DSHOW fails
@@ -248,7 +252,8 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
         logger.exception("Detection loop error")
         st.error(f"Error: {e}")
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
         
         # Flush on close
         try:

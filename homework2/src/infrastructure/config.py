@@ -1,6 +1,9 @@
 """Configuration loader for vision event pipeline."""
 import os
 import json
+import os
+import tempfile
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -66,13 +69,27 @@ def load_polygon(config_path: Optional[str] = None) -> list[list[int]]:
 
 
 def save_polygon(polygon: list[list[int]], config_path: Optional[str] = None) -> None:
-    """Save polygon to JSON config file."""
+    """Save polygon to JSON config file atomically."""
     if config_path is None:
         config_path = Path(__file__).parent.parent.parent / "resource" / "config" / "polygon.json"
     
-    Path(config_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        json.dump({"active_area": polygon}, f)
+    config_path = Path(config_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Atomic write: write to temp file then rename
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=config_path.parent, delete=False) as tf:
+            json.dump({"active_area": polygon}, tf)
+            temp_name = tf.name
+        
+        # Renaissance (atomic on POSIX, atomic replace on Windows with recent Python/OS)
+        # shutil.move handles cross-filesystem moves if necessary, but os.replace is atomic on same fs
+        os.replace(temp_name, config_path)
+    except Exception as e:
+        # cleanup if something failed before rename
+        if 'temp_name' in locals() and os.path.exists(temp_name):
+            os.remove(temp_name)
+        raise e
 
 
 def load_config(env_path: Optional[str] = None) -> AppConfig:

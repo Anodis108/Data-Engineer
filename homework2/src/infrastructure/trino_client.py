@@ -53,10 +53,61 @@ class TrinoClient:
             self._connected = True
             logger.info(f"Trino connected: {self.config.host}:{self.config.port}")
             
+            # Initialize schema and tables
+            self._init_schema()
+            
         except ImportError:
             logger.error("Trino package not installed. Run: pip install trino")
         except Exception as e:
             logger.error(f"Trino connection failed: {e}")
+            
+    def _init_schema(self) -> None:
+        """Initialize schema and tables if they don't exist."""
+        if not self.is_connected:
+            return
+
+        try:
+            # Create schema
+            self.execute_query(f"CREATE SCHEMA IF NOT EXISTS {self.config.schema} WITH (location = 's3://lake/{self.config.schema}/')")
+            
+            # Create vision_events table
+            # Note: We rely on partition projection or manual repair for partitions, 
+            # but for this homework we'll keep it simple and point to the root if possible,
+            # or define partitions. Here we define partitions matching MinIO layout.
+            create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS {self.config.schema}.vision_events (
+                event_id VARCHAR,
+                ts_start TIMESTAMP,
+                ts_end TIMESTAMP,
+                person_count INTEGER,
+                conf_avg DOUBLE,
+                conf_max DOUBLE,
+                frame_uri VARCHAR,
+                event_type VARCHAR,
+                camera_id VARCHAR,
+                date VARCHAR,
+                hour VARCHAR
+            )
+            WITH (
+                format = 'PARQUET',
+                external_location = 's3://lake/raw/events/person_detection/',
+                partitioned_by = ARRAY['camera_id', 'date', 'hour']
+            )
+            """
+            self.execute_query(create_table_sql)
+            
+            # Repair partitions to discover existing data
+            # In production, use partition projection or scheduled repair.
+            # Here we try to sync partition metadata
+            try:
+                self.execute_query(f"CALL system.sync_partition_metadata('{self.config.schema}', 'vision_events', 'ADD')")
+            except Exception:
+                pass # Sync might fail if table is empty or other reasons, allow proceed
+                
+            logger.info("Trino schema and table initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to init Trino schema: {e}")
     
     @property
     def is_connected(self) -> bool:

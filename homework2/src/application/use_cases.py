@@ -65,48 +65,52 @@ class HandleVisionEventUseCase:
         """
         logger.info(f"Handling event: {event.event_type} | count={event.person_count} | conf={event.conf_avg:.2f}")
         
-        now = datetime.now(timezone.utc)
-        
-        # 1. Upload frame snapshot
-        frame_uri = ""
-        if frame is not None and self.minio_repo and self.minio_repo.is_connected:
-            frame_uri = self.minio_repo.upload_frame(
-                frame=frame,
-                camera_id=event.camera_id,
-                timestamp=now,
-                prefix=self.snapshot_prefix,
-                jpeg_quality=self.jpeg_quality
-            ) or ""
-        
-        # Update event with frame URI
-        event.frame_uri = frame_uri
-        
-        # 2. Store event (add to buffer and upload)
-        self._event_buffer.append(event)
-        
-        if self.minio_repo and self.minio_repo.is_connected:
-            self.minio_repo.upload_events_parquet(
-                events=self._event_buffer,
-                camera_id=event.camera_id,
-                timestamp=now,
-                prefix=self.events_prefix
-            )
-            self._event_buffer.clear()
-        
-        # 3. Publish alert to RabbitMQ
-        if self.rabbitmq_pub and self.rabbitmq_pub.is_connected:
-            routing_key = self._get_routing_key(event.event_type)
+        try:
+            now = datetime.now(timezone.utc)
             
-            payload = AlertPayload(
-                event_id=event.event_id,
-                camera_id=event.camera_id,
-                ts=int(now.timestamp() * 1000),
-                event_type=event.event_type,
-                person_count=event.person_count,
-                note=f"conf_avg={event.conf_avg:.2f}"
-            )
+            # 1. Upload frame snapshot
+            frame_uri = ""
+            if frame is not None and self.minio_repo and self.minio_repo.is_connected:
+                frame_uri = self.minio_repo.upload_frame(
+                    frame=frame,
+                    camera_id=event.camera_id,
+                    timestamp=now,
+                    prefix=self.snapshot_prefix,
+                    jpeg_quality=self.jpeg_quality
+                ) or ""
             
-            self.rabbitmq_pub.publish_alert(payload, routing_key)
+            # Update event with frame URI
+            event.frame_uri = frame_uri
+            
+            # 2. Store event (add to buffer and upload)
+            self._event_buffer.append(event)
+            
+            if self.minio_repo and self.minio_repo.is_connected:
+                self.minio_repo.upload_events_parquet(
+                    events=self._event_buffer,
+                    camera_id=event.camera_id,
+                    timestamp=now,
+                    prefix=self.events_prefix
+                )
+                self._event_buffer.clear()
+            
+            # 3. Publish alert to RabbitMQ
+            if self.rabbitmq_pub and self.rabbitmq_pub.is_connected:
+                routing_key = self._get_routing_key(event.event_type)
+                
+                payload = AlertPayload(
+                    event_id=event.event_id,
+                    camera_id=event.camera_id,
+                    ts=int(now.timestamp() * 1000),
+                    event_type=event.event_type,
+                    person_count=event.person_count,
+                    note=f"conf_avg={event.conf_avg:.2f}"
+                )
+                
+                self.rabbitmq_pub.publish_alert(payload, routing_key)
+                
+        except Exception as e:
+            logger.error(f"Error handling event: {e}")
     
     def _get_routing_key(self, event_type: str) -> str:
         """Map event type to RabbitMQ routing key."""
