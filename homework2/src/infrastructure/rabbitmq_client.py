@@ -59,10 +59,13 @@ class RabbitMQPublisher:
             )
             
             # Declare queues and bind them
+            # Declare queues and bind them
             self._setup_queues()
             
             self._connected = True
             logger.info(f"RabbitMQ connected: host={host}:{port}, exchange={exchange}")
+            
+
             
         except AMQPConnectionError as e:
             logger.error(f"RabbitMQ connection failed (host={host}:{port}): {e}. Messaging disabled.")
@@ -90,7 +93,11 @@ class RabbitMQPublisher:
     @property
     def is_connected(self) -> bool:
         """Check if RabbitMQ is connected and ready."""
-        return self._connected and self._channel is not None
+        if self._connection is None or self._connection.is_closed:
+            return False
+        if self._channel is None or self._channel.is_closed:
+            return False
+        return self._connected
     
     def publish_alert(self, payload: AlertPayload, routing_key: str) -> bool:
         """
@@ -104,6 +111,7 @@ class RabbitMQPublisher:
             True if published successfully, False otherwise
         """
         if not self.is_connected:
+            logger.warning("RabbitMQ not connected. Dropping alert.")
             return False
         
         try:

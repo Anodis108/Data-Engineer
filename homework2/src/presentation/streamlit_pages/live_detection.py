@@ -60,8 +60,14 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
                 if ret:
                     ss.bg = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     ss.canvas_key += 1
-                    st.success("Background captured!")
-                cap.release()
+                    # Reset polygon when new background is captured to force fresh drawing
+                    ss.polygon = [] 
+                    st.success("Background captured! Draw a new polygon.")
+                
+                try:
+                    cap.release()
+                except Exception:
+                    pass
             else:
                 st.error("Cannot open camera!")
         
@@ -97,22 +103,27 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
         
         # Process canvas result
         if canvas_result.json_data and canvas_result.json_data["objects"]:
-            new_poly = []
-            for obj in canvas_result.json_data["objects"]:
-                if obj["type"] == "path":
-                    pts = [[int(p[1]), int(p[2])] for p in obj["path"] if p[0] in ['M', 'L']]
-                    if len(pts) > 2:
-                        new_poly = pts
-                        break
-            
-            if new_poly and new_poly != ss.polygon:
-                ss.polygon = new_poly
-                try:
-                    save_polygon(ss.polygon)
-                    st.success(f"✅ Polygon saved: {len(new_poly)} points")
-                except Exception as e:
-                    logger.error(f"Failed to save polygon: {e}")
-                    st.error(f"❌ Failed to save polygon: {e}")
+            try:
+                new_poly = []
+                for obj in canvas_result.json_data["objects"]:
+                    if obj["type"] == "path":
+                        pts = [[int(p[1]), int(p[2])] for p in obj["path"] if p[0] in ['M', 'L']]
+                        if len(pts) > 2:
+                            new_poly = pts
+                            break
+                
+                if new_poly and new_poly != ss.polygon:
+                    logger.info(f"Polygon update detected. Old: {len(ss.polygon)} pts, New: {len(new_poly)} pts")
+                    ss.polygon = new_poly
+                    try:
+                        save_polygon(ss.polygon)
+                        logger.info("Polygon saved successfully.")
+                        st.success(f"✅ Polygon saved: {len(new_poly)} points")
+                    except Exception as e:
+                        logger.error(f"Failed to save polygon: {e}")
+                        st.error(f"❌ Failed to save polygon: {e}")
+            except Exception as e:
+                logger.error(f"Error processing polygon data: {e}")
         
         # Current polygon info
         if ss.polygon:
@@ -145,13 +156,25 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     from src.application.use_cases import HandleVisionEventUseCase
     
     # Initialize detector
-    # Initialize detector directly (no caching to avoid thread-safety/fusion issues)
-    # This fixes the "AttributeError: 'Conv' object has no attribute 'bn'"
-    detector = PersonDetector(
-        model_path=config.model_path,
-        conf_threshold=config.conf_threshold,
-        polygon=ss.polygon
-    )
+    # Check if detector is already in session state to avoid reloading
+    if 'detector' not in ss:
+        try:
+            logger.info("Initializing PersonDetector...")
+            ss.detector = PersonDetector(
+                model_path=config.model_path,
+                conf_threshold=config.conf_threshold,
+                polygon=ss.polygon
+            )
+            logger.info("PersonDetector initialized and cached.")
+        except Exception as e:
+            logger.error(f"Failed to load PersonDetector: {e}")
+            st.error(f"❌ Failed to load YOLO model: {e}")
+            return
+
+    # Reuse cached detector
+    detector = ss.detector
+    
+    # Always update polygon in case it changed
     detector.set_polygon(ss.polygon)
     
     aggregator = EventAggregator(
@@ -173,18 +196,27 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     status_placeholder = st.empty()
     metrics_cols = st.columns(4)
     
-    # Use CAP_DSHOW on Windows for better stability
-    import platform
-    backend = cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
+    # Use CAP_ANY for better stability on reload, DSHOW can crash on release
+    backend = cv2.CAP_ANY
     
-    cap = cv2.VideoCapture(config.camera_index, backend)
-    
-    if not cap.isOpened():
-        # Fallback to default backend if DSHOW fails
-        cap = cv2.VideoCapture(config.camera_index)
+    cap = None
+    max_retries = 5
+    for attempt in range(max_retries):
+        cap = cv2.VideoCapture(config.camera_index, backend)
         if not cap.isOpened():
-            st.error(f"❌ Cannot open camera index {config.camera_index}")
-            return
+            # Fallback
+            cap = cv2.VideoCapture(config.camera_index)
+        
+        if cap.isOpened():
+            break
+            
+        if attempt < max_retries - 1:
+            logger.warning(f"Camera busy, retrying in 1s... ({attempt+1}/{max_retries})")
+            time.sleep(1.0)
+            
+    if cap is None or not cap.isOpened():
+        st.error(f"❌ Cannot open camera index {config.camera_index} after {max_retries} attempts")
+        return
     
     frame_count = 0
     target_fps = getattr(config, 'target_fps', 15)
@@ -253,7 +285,10 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
         st.error(f"Error: {e}")
     finally:
         if cap is not None:
-            cap.release()
+            try:
+                cap.release()
+            except Exception:
+                pass
         
         # Flush on close
         try:

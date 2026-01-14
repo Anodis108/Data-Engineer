@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -75,6 +78,8 @@ def save_polygon(polygon: list[list[int]], config_path: Optional[str] = None) ->
     
     config_path = Path(config_path)
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Saving polygon to: {config_path.absolute()}")
     
     # Atomic write: write to temp file then rename
     try:
