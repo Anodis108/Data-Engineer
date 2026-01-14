@@ -132,6 +132,38 @@ class RabbitMQPublisher:
             logger.error(f"Failed to publish alert: {e}")
             return False
     
+    def consume_alerts(self, queue_name: str, limit: int = 10) -> list[AlertPayload]:
+        """
+        Pull (consume) messages from a queue without blocking.
+        
+        Args:
+            queue_name: Name of the queue to pull from
+            limit: Maximum number of messages to pull
+            
+        Returns:
+            List of AlertPayload objects
+        """
+        if not self.is_connected:
+            return []
+            
+        alerts = []
+        try:
+            for _ in range(limit):
+                method_frame, header_frame, body = self._channel.basic_get(queue=queue_name, auto_ack=True)
+                if method_frame:
+                    try:
+                        payload = AlertPayload.from_json(body.decode("utf-8"))
+                        alerts.append(payload)
+                    except Exception as e:
+                        logger.error(f"Failed to parse alert payload: {e}")
+                else:
+                    # No more messages in this queue
+                    break
+        except Exception as e:
+            logger.error(f"Error consuming from {queue_name}: {e}")
+            
+        return alerts
+
     def close(self) -> None:
         """Close RabbitMQ connection."""
         if self._connection and not self._connection.is_closed:

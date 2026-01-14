@@ -65,12 +65,34 @@ def render_alerts(rabbitmq_pub):
     
     st.divider()
     
-    # Manual message consumption info
+    # Alert consumption logic
     st.subheader("📨 Alert Management")
     
     # Simulate alert history (stored in session state)
     if "alert_history" not in st.session_state:
         st.session_state.alert_history = []
+    
+    # Fetch real alerts from RabbitMQ
+    new_alerts_count = 0
+    for queue in queues:
+        try:
+            # We use a small limit to not hang the page, but enough to get recent activity
+            payloads = rabbitmq_pub.consume_alerts(queue['name'], limit=50)
+            for p in payloads:
+                st.session_state.alert_history.append({
+                    "timestamp": datetime.fromtimestamp(p.ts / 1000),
+                    "event_type": p.event_type,
+                    "routing_key": queue['routing_key'],
+                    "status": "📥 Received (Real Data)"
+                })
+                new_alerts_count += 1
+        except Exception as e:
+            logger.error(f"Error fetching from {queue['name']}: {e}")
+    
+    if new_alerts_count > 0:
+        st.toast(f"📥 Received {new_alerts_count} new alerts from RabbitMQ!", icon="🔔")
+    
+    st.divider()
     
     # Alert simulator
     st.markdown("**Test Alert Simulator:**")

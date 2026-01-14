@@ -34,3 +34,16 @@ class AlertPayload:
     def to_bytes(self) -> bytes:
         """Serialize to bytes for messaging."""
         return self.to_json().encode("utf-8")
+
+    @staticmethod
+    def from_json(json_str: str) -> 'AlertPayload':
+        """Deserialize from JSON string."""
+        data = json.loads(json_str)
+        return AlertPayload(
+            event_id=data["event_id"],
+            camera_id=data["camera_id"],
+            ts=data["ts"],
+            event_type=data.get("type", data.get("event_type")),
+            person_count=data["person_count"],
+            note=data.get("note", "")
+        )
