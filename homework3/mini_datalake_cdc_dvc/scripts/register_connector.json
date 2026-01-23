@@ -1,0 +1,20 @@
+{
+  "name": "pg-cdc",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "cdc-postgres",
+    "database.port": "5432",
+    "database.user": "dbz",
+    "database.password": "dbz",
+    "database.dbname": "inventory",
+    "topic.prefix": "pgserver1",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_slot",
+    "publication.autocreate.mode": "filtered",
+    "table.include.list": "public.customers",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "false",
+    "decimal.handling.mode": "double"
+  }
+}

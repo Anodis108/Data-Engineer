@@ -1,0 +1,6 @@
+pika
+kafka-python
+trino
+minio
+requests
+pyarrow

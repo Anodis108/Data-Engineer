@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local outputs
+scripts/out/
+lake/raw/iot/pump/

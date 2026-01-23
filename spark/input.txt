@@ -1,0 +1,3 @@
+This is a sample text file for Spark word count example.
+Spark is fast. Spark is easy to use.
+This file contains several words. Some words repeat, some do not.

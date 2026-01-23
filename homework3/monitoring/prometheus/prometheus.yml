@@ -1,0 +1,114 @@
+# Prometheus Configuration for Mini Data Lake
+# ===========================================
+# Collects metrics from all services in the data pipeline
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mini-datalake'
+    env: 'development'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+scrape_configs:
+  # =========================
+  # PROMETHEUS SELF-MONITORING
+  # =========================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # =========================
+  # SYSTEM METRICS
+  # =========================
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'system'
+
+  # =========================
+  # DATA STORAGE (MinIO)
+  # =========================
+  - job_name: 'minio'
+    metrics_path: /minio/v2/metrics/cluster
+    scheme: http
+    static_configs:
+      - targets: ['minio:9000']
+        labels:
+          service: 'minio'
+          layer: 'storage'
+
+  # =========================
+  # MESSAGE QUEUE (Kafka)
+  # =========================
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+        labels:
+          service: 'kafka'
+          layer: 'ingestion'
+
+  # =========================
+  # DATABASE (PostgreSQL CDC)
+  # =========================
+  - job_name: 'postgres-cdc'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgres-cdc'
+          layer: 'source'
+
+  # =========================
+  # PROCESSING (Spark) 
+  # Note: Requires Spark to expose metrics endpoint
+  # =========================
+  - job_name: 'spark-master'
+    metrics_path: /metrics/master/prometheus
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['spark-master:8080']
+        labels:
+          service: 'spark-master'
+          layer: 'processing'
+    # Ignore if Spark is not running
+    honor_labels: true
+
+  # =========================
+  # PROCESSING (Flink)
+  # Note: Flink exposes metrics on port 9249 by default
+  # =========================
+  - job_name: 'flink'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['flink-jobmanager:9249']
+        labels:
+          service: 'flink'
+          layer: 'processing'
+    # Ignore if Flink metrics not available
+    honor_labels: true
+
+  # =========================
+  # QUERY ENGINE (Trino)
+  # Trino exposes JMX metrics
+  # =========================
+  - job_name: 'trino'
+    scrape_interval: 30s
+    metrics_path: /v1/status
+    static_configs:
+      - targets: ['trino-coordinator:8080']
+        labels:
+          service: 'trino'
+          layer: 'serving'
+    # Ignore if not available
+    honor_labels: true

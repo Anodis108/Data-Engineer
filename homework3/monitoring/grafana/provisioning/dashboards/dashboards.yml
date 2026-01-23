@@ -1,0 +1,17 @@
+# Grafana Dashboards Provisioning
+# ================================
+# Auto-load dashboards from file
+
+apiVersion: 1
+
+providers:
+  - name: 'Data Lake Dashboards'
+    orgId: 1
+    folder: 'Data Lake'
+    folderUid: 'datalake'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

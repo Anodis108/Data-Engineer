@@ -1,0 +1,736 @@
+# ====================================================
+
+# 1. LAYER 1: SOURCE SYSTEMS (OLTP)
+# cdc-postgres, cdc-seed
+
+# 2. LAYER 2: INGESTION & MESSAGING
+# Kafka Ecosystem: zookeeper, kafka, connect, kafka-ui
+# RabbitMQ Cluster: rabbitmq1, rabbitmq2
+
+# 3. LAYER 3: STORAGE & METADATA
+# Object Storage: minio, minio-init
+# Metastore: metastore-db, hive-metastore
+
+# 4. LAYER 4: PROCESSING
+# Spark: spark-master, spark-worker
+# Flink: flink-jobmanager, flink-taskmanager
+
+# 5. LAYER 5: QUERY & SERVING
+# trino-coordinator, trino-worker
+
+# 6. ORCHESTRATION
+# airflow-postgres, init, webserver, scheduler
+
+# 7. MONITORING & OBSERVABILITY
+# prometheus, grafana
+# Exporters: node, kafka, postgres
+
+# ====================================================
+
+
+
+version: "3.9"
+
+services:
+  # ====================================================
+  # LAYER 1: SOURCE SYSTEMS (OLTP)
+  # ====================================================
+  # Debezium Postgres image enables logical decoding by default
+  cdc-postgres:
+    image: debezium/postgres:15
+    container_name: cdc-postgres
+    hostname: cdc-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"   # map to host 5433 to avoid conflict with metastore-db
+    environment:
+      POSTGRES_USER: dbz
+      POSTGRES_PASSWORD: dbz
+      POSTGRES_DB: inventory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbz -d inventory"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Seed OLTP table + data for CDC
+  cdc-seed:
+    image: postgres:17
+    container_name: cdc-seed
+    depends_on:
+      cdc-postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: dbz
+    volumes:
+      - ./scripts/cdc_bootstrap.sql:/cdc_bootstrap.sql:ro
+    entrypoint: >
+      bash -lc "
+      psql -h cdc-postgres -U dbz -d inventory -f /cdc_bootstrap.sql &&
+      echo '✅ CDC source table ready' &&
+      exit 0
+      "
+
+  # ====================================================
+  # LAYER 2: INGESTION & MESSAGING
+  # ====================================================
+  # --- Kafka Ecosystem ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.2.1
+    container_name: cdc-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: cdc-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    hostname: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+  connect:
+    image: debezium/connect:2.5
+    container_name: cdc-connect
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_started
+      cdc-postgres:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: "1"
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Auto-register Debezium connector (so you don't need to curl manually)
+  connector-init:
+    image: curlimages/curl:8.6.0
+    container_name: cdc-connector-init
+    depends_on:
+      connect:
+        condition: service_healthy
+      cdc-seed:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts/register_connector.json:/register_connector.json:ro
+    entrypoint: >
+      sh -lc "
+      echo '⏳ Registering Debezium connector...' &&
+      curl -s -o /dev/null -w '%{http_code}\n' -X POST http://connect:8083/connectors
+      -H 'Content-Type: application/json'
+      -d @/register_connector.json | grep -E '^(201|409)$' &&
+      echo '✅ Connector registered (201 created / 409 already exists)' &&
+      exit 0
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: cdc-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_started
+      connect:
+        condition: service_healthy
+    ports:
+      - "8081:8080"   # avoid conflict with Trino 8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+
+  # --- RabbitMQ Cluster ---
+  rabbitmq1:
+    image: rabbitmq:3-management
+    container_name: rabbitmq1
+    hostname: rabbitmq1
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    volumes:
+      - rabbitmq1_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq2:
+    image: rabbitmq:3-management
+    container_name: rabbitmq2
+    hostname: rabbitmq2
+    restart: unless-stopped
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    volumes:
+      - rabbitmq2_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # Service join cluster: runs once then exits
+  rabbitmq2-join:
+    image: rabbitmq:3-management
+    container_name: rabbitmq2-join
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+      rabbitmq2:
+        condition: service_healthy
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+    entrypoint: >
+      bash -lc "
+        set -e
+        echo '⏳ Joining rabbitmq2 -> cluster rabbitmq1...'
+
+        rabbitmqctl -n rabbit@rabbitmq2 stop_app
+        rabbitmqctl -n rabbit@rabbitmq2 reset
+        rabbitmqctl -n rabbit@rabbitmq2 join_cluster rabbit@rabbitmq1
+        rabbitmqctl -n rabbit@rabbitmq2 start_app
+
+        echo '✅ Joined.'
+        rabbitmqctl -n rabbit@rabbitmq1 cluster_status
+      "
+    restart: "no"
+
+  # ====================================================
+  # LAYER 3: STORAGE & METADATA
+  # ====================================================
+  # --- MinIO (S3 compatible object storage) ---
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Console UI
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Create buckets: lake (raw zone + dvc remote) & iot-time-series (exercise batch)
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123} &&
+      mc mb -p local/lake || true &&
+      mc mb -p local/iot-time-series || true &&
+      mc mb -p local/dvcstore || true &&
+      mc anonymous set none local/lake || true &&
+      mc anonymous set none local/iot-time-series || true &&
+      mc anonymous set none local/dvcstore || true &&
+      echo '✅ Buckets ready: lake, iot-time-series, dvcstore' &&
+      exit 0
+      "
+
+  # --- Hive Metastore ---
+  metastore-db:
+    image: postgres:17
+    container_name: metastore-db
+    hostname: metastore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - metastore_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  hms-schema-init:
+    image: starburstdata/hive:3.1.2-e.18
+    container_name: hms-schema-init
+    depends_on:
+      metastore-db:
+        condition: service_healthy
+    environment:
+      HIVE_METASTORE_DRIVER: org.postgresql.Driver
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
+      HIVE_METASTORE_USER: hive
+      HIVE_METASTORE_PASSWORD: hive_password
+      # MinIO / S3
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_PATH_STYLE_ACCESS: "true"
+      REGION: ""
+      GOOGLE_CLOUD_KEY_FILE_PATH: ""
+      AZURE_ADL_CLIENT_ID: ""
+      AZURE_ADL_CREDENTIAL: ""
+      AZURE_ADL_REFRESH_URL: ""
+      AZURE_ABFS_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_ACCESS_KEY: ""
+      AZURE_WASB_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_OAUTH: ""
+      AZURE_ABFS_OAUTH_TOKEN_PROVIDER: ""
+      AZURE_ABFS_OAUTH_CLIENT_ID: ""
+      AZURE_ABFS_OAUTH_SECRET: ""
+      AZURE_ABFS_OAUTH_ENDPOINT: ""
+      AZURE_WASB_ACCESS_KEY: ""
+    entrypoint: >
+      /bin/bash -lc "
+      schematool -dbType postgres -initSchema --verbose || true;
+      exit 0
+      "
+
+  hive-metastore:
+    image: starburstdata/hive:3.1.2-e.18
+    container_name: hive-metastore
+    hostname: hive-metastore
+    restart: unless-stopped
+    ports:
+      - "9083:9083"
+    environment:
+      HIVE_METASTORE_DRIVER: org.postgresql.Driver
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
+      HIVE_METASTORE_USER: hive
+      HIVE_METASTORE_PASSWORD: hive_password
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_PATH_STYLE_ACCESS: "true"
+      REGION: ""
+      GOOGLE_CLOUD_KEY_FILE_PATH: ""
+      AZURE_ADL_CLIENT_ID: ""
+      AZURE_ADL_CREDENTIAL: ""
+      AZURE_ADL_REFRESH_URL: ""
+      AZURE_ABFS_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_ACCESS_KEY: ""
+      AZURE_WASB_STORAGE_ACCOUNT: ""
+      AZURE_ABFS_OAUTH: ""
+      AZURE_ABFS_OAUTH_TOKEN_PROVIDER: ""
+      AZURE_ABFS_OAUTH_CLIENT_ID: ""
+      AZURE_ABFS_OAUTH_SECRET: ""
+      AZURE_ABFS_OAUTH_ENDPOINT: ""
+      AZURE_WASB_ACCESS_KEY: ""
+    depends_on:
+      metastore-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      hms-schema-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/localhost/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ====================================================
+  # LAYER 4: PROCESSING (Spark & Flink)
+  # ====================================================
+  # --- Spark ---
+  spark-master:
+    image: apache/spark:latest
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    hostname: spark-master
+    restart: unless-stopped
+    ports:
+      - "7077:7077"   # Spark Master RPC
+      - "8090:8080"   # Spark Master Web UI (avoid conflict with Trino 8080)
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      # S3/MinIO config for Spark
+      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/*
+    volumes:
+      - ../spark/jobs:/opt/bitnami/spark/jobs:ro
+      - ../spark/conf:/opt/bitnami/spark/conf/custom:ro
+      - spark_data:/opt/bitnami/spark/work
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/json/ > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  spark-worker:
+    image: apache/spark:latest
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    hostname: spark-worker
+    restart: unless-stopped
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8091:8081"   # Spark Worker Web UI
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - ../spark/jobs:/opt/spark/jobs:ro
+      - spark_data:/opt/spark/work
+
+  # --- Flink ---
+  flink-jobmanager:
+    image: flink:1.18-java11
+    container_name: flink-jobmanager
+    hostname: flink-jobmanager
+    restart: unless-stopped
+    ports:
+      - "8092:8081"   # Flink Web UI (avoid conflict with Kafka UI 8081)
+      - "6123:6123"   # Flink RPC
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        parallelism.default: 2
+        state.backend: hashmap
+        state.checkpoints.dir: file:///tmp/flink-checkpoints
+    volumes:
+      - ../flink/jobs:/opt/flink/jobs:ro
+      - ../flink/lib:/opt/flink/lib/custom:ro
+      - flink_data:/tmp/flink-checkpoints
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/overview > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  flink-taskmanager:
+    image: flink:1.18-java11
+    container_name: flink-taskmanager
+    hostname: flink-taskmanager
+    restart: unless-stopped
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 2
+        taskmanager.memory.process.size: 2g
+    volumes:
+      - ../flink/jobs:/opt/flink/jobs:ro
+      - ../flink/lib:/opt/flink/lib/custom:ro
+      - flink_data:/tmp/flink-checkpoints
+
+  # ====================================================
+  # LAYER 5: QUERY & SERVING (Trino)
+  # ====================================================
+  trino-coordinator:
+    image: trinodb/trino:470
+    container_name: trino-coordinator
+    hostname: trino-coordinator
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/coordinator/etc:/etc/trino:ro
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  trino-worker:
+    image: trinodb/trino:470
+    container_name: trino-worker
+    hostname: trino-worker
+    restart: unless-stopped
+    depends_on:
+      trino-coordinator:
+        condition: service_healthy
+    volumes:
+      - ./trino/worker/etc:/etc/trino:ro
+
+  # ====================================================
+  # ORCHESTRATION LAYER (Apache Airflow)
+  # ====================================================
+  airflow-postgres:
+    image: postgres:15
+    container_name: airflow-postgres
+    hostname: airflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  airflow-init:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin123
+    user: "0:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/plugins:/opt/airflow/plugins
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin123 --firstname Admin --lastname User --role Admin --email admin@example.com || true
+        echo "✅ Airflow database initialized"
+    restart: "no"
+
+  airflow-webserver:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: airflow-webserver
+    hostname: airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'mini-datalake-secret-key-2024'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+      AIRFLOW__METRICS__STATSD_ON: 'false'
+      # Environment connections
+      AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077'
+      AIRFLOW_CONN_MINIO_S3: 's3://minioadmin:minioadmin123@?host=http://minio:9000'
+    ports:
+      - "8085:8080"
+    user: "0:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: webserver
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: airflow-scheduler
+    hostname: airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
+    user: "0:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: scheduler
+
+  # ====================================================
+  # MONITORING & OBSERVABILITY
+  # ====================================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+      - '--storage.tsdb.retention.time=15d'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    hostname: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/data_pipeline_overview.json
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # --- Metric Exporters ---
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /:/host:ro,rslave
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    hostname: kafka-exporter
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    command:
+      - '--kafka.server=kafka:29092'
+      - '--log.level=warn'
+    ports:
+      - "9308:9308"
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    hostname: postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://dbz:dbz@cdc-postgres:5432/inventory?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      cdc-postgres:
+        condition: service_healthy
+
+networks:
+  default:
+    name: infra_datalake
+
+volumes:
+  minio_data:
+  metastore_db_data:
+  rabbitmq1_data:
+  rabbitmq2_data:
+  spark_data:
+  flink_data:
+  airflow_postgres_data:
+  prometheus_data:
+  grafana_data:

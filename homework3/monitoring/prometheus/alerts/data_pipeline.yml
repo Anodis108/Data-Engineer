@@ -1,0 +1,201 @@
+# Alert Rules for Data Pipeline
+# ==============================
+# Critical alerts for monitoring the data lake infrastructure
+
+groups:
+  # =========================
+  # INFRASTRUCTURE ALERTS
+  # =========================
+  - name: infrastructure_alerts
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for 5 minutes"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85%"
+
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space is running low"
+          description: "Disk usage is above 85%"
+
+  # =========================
+  # KAFKA ALERTS
+  # =========================
+  - name: kafka_alerts
+    rules:
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumergroup }} has lag > 10000 on topic {{ $labels.topic }}"
+
+      - alert: KafkaConsumerLagCritical
+        expr: kafka_consumer_group_lag > 50000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumergroup }} has lag > 50000 on topic {{ $labels.topic }}"
+
+      - alert: KafkaBrokerDown
+        expr: kafka_brokers < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka broker is down"
+          description: "No Kafka brokers are available"
+
+  # =========================
+  # MINIO ALERTS
+  # =========================
+  - name: minio_alerts
+    rules:
+      - alert: MinIOHighDiskUsage
+        expr: minio_cluster_disk_used_bytes / minio_cluster_disk_total_bytes > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO storage usage > 85%"
+          description: "MinIO disk usage is critically high"
+
+      - alert: MinIODown
+        expr: up{job="minio"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO is down"
+          description: "MinIO S3 storage is not responding"
+
+  # =========================
+  # POSTGRESQL ALERTS
+  # =========================
+  - name: postgres_alerts
+    rules:
+      - alert: PostgresConnectionsHigh
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High PostgreSQL connections"
+          description: "PostgreSQL has more than 80 active connections"
+
+      - alert: PostgresReplicationLag
+        expr: pg_replication_lag > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL replication lag"
+          description: "Replication lag is greater than 30 seconds"
+
+      - alert: PostgresDown
+        expr: up{job="postgres-cdc"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL CDC database is down"
+          description: "Cannot connect to CDC PostgreSQL database"
+
+  # =========================
+  # SPARK ALERTS
+  # =========================
+  - name: spark_alerts
+    rules:
+      - alert: SparkMasterDown
+        expr: up{job="spark-master"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spark Master is down"
+          description: "Spark Master has been down for 2 minutes"
+
+      - alert: SparkNoWorkers
+        expr: spark_master_workers_alive == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Spark workers available"
+          description: "No Spark workers are registered with the master"
+
+  # =========================
+  # FLINK ALERTS
+  # =========================
+  - name: flink_alerts
+    rules:
+      - alert: FlinkJobManagerDown
+        expr: up{job="flink"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Flink JobManager is down"
+          description: "Flink JobManager has been down for 2 minutes"
+
+      - alert: FlinkJobFailed
+        expr: flink_jobmanager_job_lastRestartTime > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flink job restarted"
+          description: "A Flink job has restarted recently"
+
+  # =========================
+  # DATA PIPELINE ALERTS
+  # =========================
+  - name: pipeline_alerts
+    rules:
+      - alert: NoDataIngestion
+        expr: rate(minio_s3_requests_total{api="PutObject"}[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No data ingestion detected"
+          description: "No new objects have been written to MinIO in the last 30 minutes"
+
+      - alert: HighErrorRate
+        expr: rate(minio_s3_requests_errors_total[5m]) / rate(minio_s3_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High S3 error rate"
+          description: "More than 5% of S3 requests are failing"
