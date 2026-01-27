@@ -55,7 +55,7 @@ services:
 
   # Seed OLTP table + data for CDC
   cdc-seed:
-    image: postgres:17
+    image: postgres:15
     container_name: cdc-seed
     depends_on:
       cdc-postgres:
@@ -284,7 +284,7 @@ services:
 
   # --- Hive Metastore ---
   metastore-db:
-    image: postgres:17
+    image: postgres:15
     container_name: metastore-db
     hostname: metastore-db
     restart: unless-stopped
@@ -550,25 +550,33 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
-      AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      _AIRFLOW_DB_MIGRATE: 'true'
-      _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin123
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     user: "0:0"
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
       - ../airflow/plugins:/opt/airflow/plugins
-    entrypoint: /bin/bash
     command:
+      - bash
       - -c
       - |
-        airflow db migrate
-        airflow users create --username admin --password admin123 --firstname Admin --lastname User --role Admin --email admin@example.com || true
-        echo "✅ Airflow database initialized"
+          set -e
+
+          echo "=== DB MIGRATE ==="
+          airflow db migrate
+
+          echo "=== CREATE ADMIN USER ==="
+          airflow users create \
+            --username admin \
+            --password admin123 \
+            --firstname Admin \
+            --lastname User \
+            --role Admin \
+            --email admin@example.com || true
+
+          echo "=== AIRFLOW INIT DONE ==="
     restart: "no"
 
   airflow-webserver:
@@ -587,12 +595,17 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
       AIRFLOW__METRICS__STATSD_ON: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       # Environment connections
-      AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077'
-      AIRFLOW_CONN_MINIO_S3: 's3://minioadmin:minioadmin123@?host=http://minio:9000'
+      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+      AIRFLOW_CONN_MINIO_S3: s3://minioadmin:minioadmin123@/?host=http://minio:9000
+      AIRFLOW_CONN_CDC_POSTGRES: postgresql://dbz:dbz@cdc-postgres:5432/inventory
+      AIRFLOW_CONN_KAFKA_DEFAULT: kafka://kafka:29092
+      AIRFLOW_CONN_HIVE_METASTORE: thrift://hive-metastore:9083
+      AIRFLOW_CONN_TRINO_DEFAULT: trino://trino-coordinator:8080
+      AIRFLOW_CONN_RABBITMQ_DEFAULT: amqp://admin:admin123@rabbitmq1:5672/
     ports:
       - "8085:8080"
-    user: "0:0"
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
@@ -620,7 +633,15 @@ services:
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
-    user: "0:0"
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+      # Environment connections
+      AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
+      AIRFLOW_CONN_MINIO_S3: s3://minioadmin:minioadmin123@/?host=http://minio:9000
+      AIRFLOW_CONN_CDC_POSTGRES: postgresql://dbz:dbz@cdc-postgres:5432/inventory
+      AIRFLOW_CONN_KAFKA_DEFAULT: kafka://kafka:29092
+      AIRFLOW_CONN_HIVE_METASTORE: thrift://hive-metastore:9083
+      AIRFLOW_CONN_TRINO_DEFAULT: trino://trino-coordinator:8080
+      AIRFLOW_CONN_RABBITMQ_DEFAULT: amqp://admin:admin123@rabbitmq1:5672/
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
@@ -692,7 +713,7 @@ services:
       - '--path.rootfs=/host'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:roe
 
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest

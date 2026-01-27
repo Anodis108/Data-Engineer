@@ -360,10 +360,18 @@ docker ps
 
 Health check:
 
+#### Manual Health Check (Quick)
 ```bash
 curl -sf http://localhost:9000/minio/health/live && echo OK
 curl -sf http://localhost:8080/v1/info && echo OK
 curl -sf http://localhost:8083/ && echo OK
+```
+
+#### Automated Health Check (Recommended)
+Sử dụng bộ test suite toàn diện để kiểm tra tất cả các layer:
+```bash
+cd homework3
+./run_tests.sh
 ```
 
 ---
@@ -526,3 +534,28 @@ Sơ đồ tư duy tổng hợp:
 - Dữ liệu được xử lý thế nào? -> Dùng Spark (batch/streaming) hoặc Flink (real-time).
 - Làm sao tìm thấy dữ liệu? -> Nhờ hive-metastore chỉ đường.
 - Làm sao lấy dữ liệu ra báo cáo? -> Dùng trino viết SQL.
+
+---
+
+## 11) Testing Suite ⭐ NEW
+
+Hệ thống đi kèm với bộ test toàn diện sử dụng **Pytest** để đảm bảo tính ổn định của các layer.
+
+### Cấu trúc bộ test:
+- `tests/test_pipeline.py`: Kiểm tra sức khỏe (Health Check) toàn bộ 7 lớp.
+- `tests/test_spark_flink.py`: Kiểm tra cụm Spark và Flink (Master, Worker, Slots, Jobs).
+- `tests/test_airflow.py`: Kiểm tra Orchestration (API, DAGs, Scheduler status).
+- `tests/test_monitoring.py`: Kiểm tra Monitoring (Prometheus targets, Grafana datasources).
+- `tests/test_e2e_flow.py`: Kiểm tra luồng dữ liệu End-to-End (Data ingestion -> Storage).
+
+### Cách chạy test:
+```bash
+# Cấp quyền thực thi và chạy script wrapper
+chmod +x run_tests.sh
+./run_tests.sh
+
+# Hoặc chạy trực tiếp bằng pytest (verbose mode)
+python -m pytest tests/ -v
+```
+
+Bộ test sẽ tự động tạo báo cáo `test_report.html` sau khi hoàn thành.
