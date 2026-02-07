@@ -1,4 +1,4 @@
-"""Live Detection Page - Camera feed with YOLO inference and polygon config."""
+"""Trang Phát hiện Trực tiếp - Luồng Camera với suy luận YOLO và cấu hình vùng cấm."""
 import cv2
 import numpy as np
 import streamlit as st
@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 def render_live_detection(config, minio_repo, rabbitmq_pub):
-    """Render the live detection page."""
+    """Hiển thị trang phát hiện trực tiếp."""
     
-    st.header("🎥 Live Detection")
-    st.markdown("Real-time person detection with forbidden zone monitoring")
+    st.header("🎥 Phát hiện Trực tiếp")
+    st.markdown("Phát hiện người theo thời gian thực với giám sát vùng cấm")
     
-    # Session state init
+    # Khởi tạo session state
     ss = st.session_state
     if 'bg' not in ss:
         ss.bg = None
@@ -27,28 +27,28 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
     if 'polygon' not in ss:
         ss.polygon = config.polygon
     
-    # Layout: two columns
+    # Bố cục: hai cột
     col_config, col_stream = st.columns([1, 1])
     
-    # === Column 1: Configuration ===
+    # === Cột 1: Cấu hình ===
     with col_config:
-        st.subheader("📐 Forbidden Zone Configuration")
+        st.subheader("📐 Cấu hình Vùng cấm")
         
-        # Status indicators
+        # Chỉ báo trạng thái
         status_cols = st.columns(2)
         with status_cols[0]:
-            minio_status = "🟢 Connected" if minio_repo and minio_repo.is_connected else "🔴 Offline"
+            minio_status = "🟢 Đã kết nối" if minio_repo and minio_repo.is_connected else "🔴 Ngoại tuyến"
             st.metric("MinIO", minio_status)
         with status_cols[1]:
-            rabbit_status = "🟢 Connected" if rabbitmq_pub and rabbitmq_pub.is_connected else "🔴 Offline"
+            rabbit_status = "🟢 Đã kết nối" if rabbitmq_pub and rabbitmq_pub.is_connected else "🔴 Ngoại tuyến"
             st.metric("RabbitMQ", rabbit_status)
         
         st.divider()
         
-        # Capture background
-        if st.button("📸 Capture Background Frame"):
+        # Chụp ảnh nền
+        if st.button("📸 Chụp ảnh nền"):
             import platform
-            # Add delay to ensure resource release if streaming was active
+            # Thêm độ trễ để đảm bảo giải phóng tài nguyên nếu đang chạy stream
             time.sleep(0.5)
             backend = cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
             cap = cv2.VideoCapture(config.camera_index, backend)
@@ -60,18 +60,16 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
                 if ret:
                     ss.bg = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     ss.canvas_key += 1
-                    # Reset polygon when new background is captured to force fresh drawing
+                    # Đặt lại polygon khi chụp nền mới để buộc vẽ lại
                     ss.polygon = [] 
-                    st.success("Background captured! Draw a new polygon.")
+                    st.success("Đã chụp ảnh nền! Hãy vẽ một vùng cấm mới.")
                 
-                try:
-                    cap.release()
-                except Exception:
-                    pass
+                # Giải phóng tài nguyên camera
+                cap.release()
             else:
-                st.error("Cannot open camera!")
+                st.error("Không thể mở camera!")
         
-        # Canvas for polygon drawing
+        # Canvas để vẽ polygon
         bg_img = Image.fromarray(ss.bg) if ss.bg is not None else None
         
         initial_drawing = None
@@ -101,80 +99,72 @@ def render_live_detection(config, minio_repo, rabbitmq_pub):
             update_streamlit=True
         )
         
-        # Process canvas result
+        # Xử lý kết quả canvas
+        # Xử lý kết quả canvas
         if canvas_result.json_data and canvas_result.json_data["objects"]:
-            try:
-                new_poly = []
-                for obj in canvas_result.json_data["objects"]:
-                    if obj["type"] == "path":
-                        pts = [[int(p[1]), int(p[2])] for p in obj["path"] if p[0] in ['M', 'L']]
-                        if len(pts) > 2:
-                            new_poly = pts
-                            break
-                
-                if new_poly and new_poly != ss.polygon:
-                    logger.info(f"Polygon update detected. Old: {len(ss.polygon)} pts, New: {len(new_poly)} pts")
-                    ss.polygon = new_poly
-                    try:
-                        save_polygon(ss.polygon)
-                        logger.info("Polygon saved successfully.")
-                        st.success(f"✅ Polygon saved: {len(new_poly)} points")
-                    except Exception as e:
-                        logger.error(f"Failed to save polygon: {e}")
-                        st.error(f"❌ Failed to save polygon: {e}")
-            except Exception as e:
-                logger.error(f"Error processing polygon data: {e}")
+            # Phân tích điểm polygon từ canvas
+            new_poly = []
+            for obj in canvas_result.json_data["objects"]:
+                if obj["type"] == "path":
+                    pts = [[int(p[1]), int(p[2])] for p in obj["path"] if p[0] in ['M', 'L']]
+                    if len(pts) > 2:
+                        new_poly = pts
+                        break
+            
+            if new_poly and new_poly != ss.polygon:
+                logger.info(f"Phát hiện cập nhật polygon. Cũ: {len(ss.polygon)} điểm, Mới: {len(new_poly)} điểm")
+                ss.polygon = new_poly
+                # Lưu polygon vào tệp
+                save_polygon(ss.polygon)
+                logger.info("Đã lưu polygon thành công.")
+                st.success(f"✅ Đã lưu polygon: {len(new_poly)} điểm")
         
-        # Current polygon info
+        # Thông tin polygon hiện tại
         if ss.polygon:
-            st.info(f"Current polygon: {len(ss.polygon)} points")
+            st.info(f"Polygon hiện tại: {len(ss.polygon)} điểm")
         else:
-            st.warning("No polygon defined. Draw on the canvas above.")
+            st.warning("Chưa xác định polygon. Hãy vẽ trên canvas ở trên.")
     
-    # === Column 2: Live Stream ===
+    # === Cột 2: Luồng Trực tiếp ===
     with col_stream:
-        st.subheader("📺 Real-time Inference")
+        st.subheader("📺 Suy luận Thời gian thực")
         
-        run_detection = st.checkbox("▶️ Start Detection", value=False)
+        run_detection = st.checkbox("▶️ Bắt đầu Phát hiện", value=False)
         
         if run_detection:
             _run_detection_loop(config, ss, minio_repo, rabbitmq_pub)
         else:
-            st.info("Check 'Start Detection' to begin live stream.")
+            st.info("Chọn 'Bắt đầu Phát hiện' để bắt đầu luồng trực tiếp.")
             
-            # Show sample frame if available
+            # Hiển thị khung hình mẫu nếu có
             if ss.bg is not None:
-                st.image(ss.bg, caption="Last captured frame", use_column_width=True)
+                st.image(ss.bg, caption="Khung hình chụp gần nhất", use_column_width=True)
 
 
 def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
-    """Run the detection loop."""
+    """Chạy vòng lặp phát hiện."""
     
-    # Lazy imports to avoid requiring ultralytics at app startup
+    # Import lười biếng để tránh yêu cầu ultralytics khi khởi động ứng dụng
     from src.presentation.detector import PersonDetector
     from src.application.event_aggregator import EventAggregator
     from src.application.use_cases import HandleVisionEventUseCase
     
-    # Initialize detector
-    # Check if detector is already in session state to avoid reloading
+    # Khởi tạo detector
+    # Kiểm tra xem detector đã có trong session state chưa để tránh tải lại
     if 'detector' not in ss:
-        try:
-            logger.info("Initializing PersonDetector...")
-            ss.detector = PersonDetector(
-                model_path=config.model_path,
-                conf_threshold=config.conf_threshold,
-                polygon=ss.polygon
-            )
-            logger.info("PersonDetector initialized and cached.")
-        except Exception as e:
-            logger.error(f"Failed to load PersonDetector: {e}")
-            st.error(f"❌ Failed to load YOLO model: {e}")
-            return
+        # Khởi tạo PersonDetector
+        logger.info("Đang khởi tạo PersonDetector...")
+        ss.detector = PersonDetector(
+            model_path=config.model_path,
+            conf_threshold=config.conf_threshold,
+            polygon=ss.polygon
+        )
+        logger.info("PersonDetector đã được khởi tạo và lưu cache.")
 
-    # Reuse cached detector
+    # Sử dụng lại detector đã cache
     detector = ss.detector
     
-    # Always update polygon in case it changed
+    # Luôn cập nhật polygon phòng trường hợp nó thay đổi
     detector.set_polygon(ss.polygon)
     
     aggregator = EventAggregator(
@@ -191,12 +181,12 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
         jpeg_quality=config.snapshot_jpeg_quality
     )
     
-    # UI elements
+    # Các thành phần giao diện người dùng
     frame_placeholder = st.empty()
     status_placeholder = st.empty()
     metrics_cols = st.columns(4)
     
-    # Use CAP_ANY for better stability on reload, DSHOW can crash on release
+    # Sử dụng CAP_ANY để ổn định hơn khi tải lại, DSHOW có thể bị crash khi giải phóng
     backend = cv2.CAP_ANY
     
     cap = None
@@ -204,18 +194,18 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     for attempt in range(max_retries):
         cap = cv2.VideoCapture(config.camera_index, backend)
         if not cap.isOpened():
-            # Fallback
+            # Dự phòng
             cap = cv2.VideoCapture(config.camera_index)
         
         if cap.isOpened():
             break
             
         if attempt < max_retries - 1:
-            logger.warning(f"Camera busy, retrying in 1s... ({attempt+1}/{max_retries})")
+            logger.warning(f"Camera đang bận, thử lại sau 1s... ({attempt+1}/{max_retries})")
             time.sleep(1.0)
             
     if cap is None or not cap.isOpened():
-        st.error(f"❌ Cannot open camera index {config.camera_index} after {max_retries} attempts")
+        st.error(f"❌ Không thể mở camera index {config.camera_index} sau {max_retries} lần thử")
         return
     
     frame_count = 0
@@ -223,81 +213,71 @@ def _run_detection_loop(config, ss, minio_repo, rabbitmq_pub):
     event_count = 0
     consecutive_failures = 0
     
-    try:
-        while cap.isOpened():
-            t_start = time.time()
-            ret, frame = cap.read()
-            
-            if not ret:
-                consecutive_failures += 1
-                if consecutive_failures > 20: # Stop if failed for ~1-2 seconds
-                    logger.error("Too many consecutive camera failures. Stopping stream.")
-                    st.error("Camera stream lost. Please check connection or try again.")
-                    break
-                time.sleep(0.1)
-                continue
-            
-            consecutive_failures = 0
-            frame_count += 1
-            frame = cv2.resize(frame, (640, 480))
-            
-            # Inference
-            detections = []
-            if frame_count % config.infer_every_n == 0:
-                try:
-                    detections = detector.detect(frame)
-                    
-                    # Aggregate
-                    event = aggregator.update(detections, frame)
-                    if event:
-                        snapshot = aggregator.get_snapshot_frame()
-                        use_case.execute(event, snapshot)
-                        event_count += 1
-                        st.toast(f"🔔 Event: {event.event_type}", icon="🔔")
-                except Exception as e:
-                    logger.error(f"Inference error: {e}")
-            
-            # Visualization
-            display_frame = detector.draw_detections(frame, detections)
-            
-            # Update UI
-            fps = 1.0 / (time.time() - t_start + 1e-6)
-            
-            with metrics_cols[0]:
-                st.metric("State", aggregator.state.value)
-            with metrics_cols[1]:
-                st.metric("Detections", len(detections))
-            with metrics_cols[2]:
-                st.metric("FPS", f"{fps:.1f}")
-            with metrics_cols[3]:
-                st.metric("Events", event_count)
-            
-            frame_placeholder.image(
-                cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB),
-                use_column_width=True
-            )
-            
-            # Rate limiting
-            time.sleep(max(0, 1/target_fps - (time.time() - t_start)))
-            
-    except Exception as e:
-        logger.exception("Detection loop error")
-        st.error(f"Error: {e}")
-    finally:
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception:
-                pass
+    # Vòng lặp phát hiện chính
+    while cap.isOpened():
+        t_start = time.time()
+        ret, frame = cap.read()
         
-        # Flush on close
-        try:
-            final_event = aggregator.force_end_session()
-            if final_event:
+        if not ret:
+            consecutive_failures += 1
+            if consecutive_failures > 20: # Dừng nếu thất bại trong khoảng 1-2 giây
+                logger.error("Quá nhiều lần lỗi camera liên tiếp. Dừng stream.")
+                st.error("Mất kết nối camera. Vui lòng kiểm tra kết nối hoặc thử lại.")
+                break
+            time.sleep(0.1)
+            continue
+        
+        consecutive_failures = 0
+        frame_count += 1
+        frame = cv2.resize(frame, (640, 480))
+        
+        # Suy luận
+        detections = []
+        if frame_count % config.infer_every_n == 0:
+            # Chạy phát hiện
+            detections = detector.detect(frame)
+            
+            # Tổng hợp
+            event = aggregator.update(detections, frame)
+            if event:
                 snapshot = aggregator.get_snapshot_frame()
-                use_case.execute(final_event, snapshot)
-            use_case.flush()
-        except Exception as e:
-            logger.error(f"Cleanup error: {e}")
+                use_case.execute(event, snapshot)
+                event_count += 1
+                st.toast(f"🔔 Sự kiện: {event.event_type}", icon="🔔")
         
-        st.info("Detection stopped.")
+        # Trực quan hóa
+        display_frame = detector.draw_detections(frame, detections)
+        
+        # Cập nhật UI
+        fps = 1.0 / (time.time() - t_start + 1e-6)
+        
+        with metrics_cols[0]:
+            st.metric("Trạng thái", aggregator.state.value)
+        with metrics_cols[1]:
+            st.metric("Phát hiện", len(detections))
+        with metrics_cols[2]:
+            st.metric("FPS", f"{fps:.1f}")
+        with metrics_cols[3]:
+            st.metric("Sự kiện", event_count)
+        
+        frame_placeholder.image(
+            cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB),
+            use_column_width=True
+        )
+        
+        # Giới hạn tốc độ
+        time.sleep(max(0, 1/target_fps - (time.time() - t_start)))
+    
+    # Dọn dẹp sau vòng lặp (thay thế khối finally)
+    if cap is not None:
+        # Giải phóng camera
+        cap.release()
+    
+    # Xả (flush) khi đóng
+    final_event = aggregator.force_end_session()
+    if final_event:
+        snapshot = aggregator.get_snapshot_frame()
+        use_case.execute(final_event, snapshot)
+    use_case.flush()
+    
+    st.info("Đã dừng phát hiện.")

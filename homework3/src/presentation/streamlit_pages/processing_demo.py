@@ -1,4 +1,4 @@
-"""Streamlit page demonstrating the Processing Layer capabilities."""
+"""Trang Streamlit minh họa khả năng của Tầng Xử lý."""
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -13,7 +13,7 @@ from src.infrastructure.minio_client import MinioRepository
 
 
 def generate_sample_hourly_data(hours: int = 24) -> pd.DataFrame:
-    """Generate sample hourly statistics data."""
+    """Tạo dữ liệu thống kê mẫu theo giờ."""
     now = datetime.now()
     data = {
         "hour": [now - timedelta(hours=i) for i in range(hours)],
@@ -26,7 +26,7 @@ def generate_sample_hourly_data(hours: int = 24) -> pd.DataFrame:
 
 
 def generate_sample_daily_data(days: int = 7) -> pd.DataFrame:
-    """Generate sample daily statistics data."""
+    """Tạo dữ liệu thống kê mẫu theo ngày."""
     now = datetime.now()
     data = {
         "date": [now.date() - timedelta(days=i) for i in range(days)],
@@ -44,31 +44,31 @@ def render_processing_demo(
     flink_client: Optional[FlinkClient]
 ):
     """
-    Render Processing Layer demo page.
+    Hiển thị trang demo Tầng Xử lý.
     
     Args:
-        minio_repo: MinIO repository for data access
-        spark_client: Spark client for status check
-        flink_client: Flink client for status check
+        minio_repo: MinIO repository để truy cập dữ liệu
+        spark_client: Spark client để kiểm tra trạng thái
+        flink_client: Flink client để kiểm tra trạng thái
     """
-    st.header("⚡ Processing Layer Demo")
+    st.header("⚡ Demo Tầng Xử lý")
     st.markdown("""
-    This page demonstrates the **Processing Layer** (Layer 4) of our 6-layer data pipeline,
-    powered by **Apache Spark** and **Apache Flink**.
+    Trang này minh họa **Tầng Xử lý** (Layer 4) của pipeline dữ liệu 6 tầng,
+    được vận hành bởi **Apache Spark** và **Apache Flink**.
     """)
     
     # ============================================
-    # Architecture Overview
+    # Tổng quan Kiến trúc
     # ============================================
-    with st.expander("📐 Architecture Overview", expanded=False):
+    with st.expander("📐 Tổng quan Kiến trúc", expanded=False):
         st.markdown("""
         ```
         ┌─────────────────────────────────────────────────────────────────────────┐
-        │                      DATA PIPELINE ARCHITECTURE                          │
+        │                      KIẾN TRÚC DATA PIPELINE                             │
         ├─────────────────────────────────────────────────────────────────────────┤
         │                                                                          │
         │   ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐   │
-        │   │ RAW STORAGE  │────▶│    PROCESSING    │────▶│ SERVING STORAGE  │   │
+        │   │ LƯU TRỮ THÔ  │────▶│      XỬ LÝ       │────▶│ LƯU TRỮ PHỤC VỤ  │   │
         │   │   (MinIO)    │     │  (Spark/Flink)   │     │     (MinIO)      │   │
         │   └──────────────┘     └──────────────────┘     └──────────────────┘   │
         │         │                      │                          │             │
@@ -76,8 +76,8 @@ def render_processing_demo(
         │         │              │               │                  │             │
         │         ▼              ▼               ▼                  ▼             │
         │   ┌──────────┐   ┌──────────┐   ┌──────────┐      ┌──────────────┐    │
-        │   │ Parquet  │   │  Spark   │   │  Flink   │      │    Trino     │    │
-        │   │  Files   │   │  Batch   │   │ Streaming│      │   (Query)    │    │
+        │   │  Parquet │   │  Spark   │   │  Flink   │      │    Trino     │    │
+        │   │   Files  │   │  Batch   │   │ Streaming│      │   (Query)    │    │
         │   └──────────┘   └──────────┘   └──────────┘      └──────────────┘    │
         │                                                                          │
         └─────────────────────────────────────────────────────────────────────────┘
@@ -89,91 +89,91 @@ def render_processing_demo(
         with col1:
             st.markdown("""
             **🔥 Apache Spark:**
-            - Batch processing (hourly/daily aggregations)
-            - Structured Streaming for Kafka CDC
-            - Read/Write Parquet on MinIO
-            - Distributed computation
+            - Xử lý Batch (tổng hợp theo giờ/ngày)
+            - Structured Streaming cho Kafka CDC
+            - Đọc/Ghi Parquet trên MinIO
+            - Tính toán phân tán
             """)
         
         with col2:
             st.markdown("""
             **🌊 Apache Flink:**
-            - True streaming processing
-            - Low-latency event handling
-            - Stateful stream computations
-            - Exactly-once semantics
+            - Xử lý streaming thực thụ (True streaming)
+            - Xử lý sự kiện độ trễ thấp
+            - Tính toán stream có trạng thái (Stateful)
+            - Ngữ nghĩa chính xác một lần (Exactly-once)
             """)
     
     st.divider()
     
     # ============================================
-    # Engine Status
+    # Trạng thái Engine
     # ============================================
-    st.subheader("🏥 Processing Engines Status")
+    st.subheader("🏥 Trạng thái Các Engine Xử lý")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         if spark_client and spark_client.is_connected:
-            st.success("🔥 **Spark**: Online")
+            st.success("🔥 **Spark**: Trực tuyến")
             cluster_info = spark_client.get_cluster_info()
             if cluster_info:
                 st.caption(f"Workers: {cluster_info.get('workers_alive', 0)} | "
                           f"Cores: {cluster_info.get('cores_total', 0)}")
         else:
-            st.error("🔥 **Spark**: Offline")
+            st.error("🔥 **Spark**: Ngoại tuyến")
     
     with col2:
         if flink_client and flink_client.is_connected:
-            st.success("🌊 **Flink**: Online")
+            st.success("🌊 **Flink**: Trực tuyến")
             overview = flink_client.get_cluster_overview()
             if overview:
                 st.caption(f"TaskManagers: {overview.get('taskmanagers', 0)} | "
                           f"Slots: {overview.get('slots_total', 0)}")
         else:
-            st.error("🌊 **Flink**: Offline")
+            st.error("🌊 **Flink**: Ngoại tuyến")
     
     with col3:
         if minio_repo and minio_repo.is_connected:
-            st.success("🗄️ **MinIO**: Online")
+            st.success("🗄️ **MinIO**: Trực tuyến")
             stats = minio_repo.get_bucket_stats()
             st.caption(f"Objects: {stats.get('object_count', 0)} | "
                       f"Size: {stats.get('total_size_mb', 0)} MB")
         else:
-            st.error("🗄️ **MinIO**: Offline")
+            st.error("🗄️ **MinIO**: Ngoại tuyến")
     
     st.divider()
     
     # ============================================
-    # Processed Data Visualization
+    # Trực quan hóa Dữ liệu Đã xử lý
     # ============================================
-    st.subheader("📈 Processed Data Visualization")
+    st.subheader("📈 Trực quan hóa Dữ liệu Đã xử lý")
     
-    st.info("💡 Showing sample aggregated data. In production, this would be read from "
-            "the **processed/** zone in MinIO, computed by Spark batch jobs.")
+    st.info("💡 Hiển thị dữ liệu tổng hợp mẫu. Trong thực tế, dữ liệu này sẽ được đọc từ "
+            "zone **processed/** trong MinIO, được tính toán bởi các Spark batch jobs.")
     
-    # Generate sample data
+    # Tạo dữ liệu mẫu
     hourly_df = generate_sample_hourly_data(24)
     daily_df = generate_sample_daily_data(7)
     
-    tab1, tab2, tab3 = st.tabs(["📊 Hourly Stats", "📅 Daily Stats", "🎯 Real-time Alerts"])
+    tab1, tab2, tab3 = st.tabs(["📊 Thống kê theo Giờ", "📅 Thống kê theo Ngày", "🎯 Cảnh báo Thời gian thực"])
     
     with tab1:
-        st.markdown("### Hourly Event Aggregations")
-        st.caption("*Computed by Spark batch job: `batch_vision_aggregator.py`*")
+        st.markdown("### Tổng hợp Sự kiện theo Giờ")
+        st.caption("*Được tính toán bởi Spark batch job: `batch_vision_aggregator.py`*")
         
-        # Line chart for event count
+        # Biểu đồ đường cho số lượng sự kiện
         fig = px.line(
             hourly_df.sort_values("hour"),
             x="hour",
             y="event_count",
-            title="Vision Events per Hour",
-            labels={"hour": "Time", "event_count": "Event Count"}
+            title="Sự kiện Thị giác mỗi Giờ",
+            labels={"hour": "Thời gian", "event_count": "Số lượng Sự kiện"}
         )
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
         
-        # Bar chart for person count
+        # Biểu đồ cột cho số người
         col1, col2 = st.columns(2)
         
         with col1:
@@ -181,7 +181,7 @@ def render_processing_demo(
                 hourly_df.sort_values("hour").tail(12),
                 x="hour",
                 y="avg_person_count",
-                title="Avg Person Count (Last 12 Hours)",
+                title="Số người Trung bình (12 giờ qua)",
                 color="avg_person_count",
                 color_continuous_scale="Viridis"
             )
@@ -192,14 +192,14 @@ def render_processing_demo(
                 hourly_df.sort_values("hour").tail(12),
                 x="hour",
                 y="avg_confidence",
-                title="Avg Detection Confidence",
+                title="Độ tin cậy Phát hiện Trung bình",
                 color="avg_confidence",
                 color_continuous_scale="RdYlGn"
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        # Data table
-        with st.expander("📋 View Raw Hourly Data"):
+        # Bảng dữ liệu
+        with st.expander("📋 Xem Dữ liệu Thô theo Giờ"):
             st.dataframe(
                 hourly_df.sort_values("hour", ascending=False),
                 use_container_width=True,
@@ -207,8 +207,8 @@ def render_processing_demo(
             )
     
     with tab2:
-        st.markdown("### Daily Aggregations")
-        st.caption("*Computed by Spark batch job: `batch_vision_aggregator.py`*")
+        st.markdown("### Tổng hợp theo Ngày")
+        st.caption("*Được tính toán bởi Spark batch job: `batch_vision_aggregator.py`*")
         
         col1, col2 = st.columns(2)
         
@@ -217,7 +217,7 @@ def render_processing_demo(
                 daily_df.sort_values("date"),
                 x="date",
                 y="total_events",
-                title="Total Events per Day",
+                title="Tổng Sự kiện mỗi Ngày",
                 color="total_events",
                 color_continuous_scale="Blues"
             )
@@ -228,7 +228,7 @@ def render_processing_demo(
                 daily_df.sort_values("date"),
                 x="date",
                 y="total_persons",
-                title="Total Person Detections per Day",
+                title="Tổng Phát hiện Người mỗi Ngày",
                 color="total_persons",
                 color_continuous_scale="Oranges"
             )
@@ -239,26 +239,26 @@ def render_processing_demo(
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Today's Events", f"{latest['total_events']:,}")
+            st.metric("Sự kiện Hôm nay", f"{latest['total_events']:,}")
         with col2:
-            st.metric("Person Detections", f"{latest['total_persons']:,}")
+            st.metric("Phát hiện Người", f"{latest['total_persons']:,}")
         with col3:
-            st.metric("Peak Hour", f"{latest['peak_hour']}:00")
+            st.metric("Giờ Cao điểm", f"{latest['peak_hour']}:00")
         with col4:
-            st.metric("Avg Confidence", f"{latest['avg_confidence']:.1%}")
+            st.metric("Độ tin cậy TB", f"{latest['avg_confidence']:.1%}")
     
     with tab3:
-        st.markdown("### Real-time Alert Detection")
-        st.caption("*Computed by Spark/Flink streaming jobs*")
+        st.markdown("### Phát hiện Cảnh báo Thời gian thực")
+        st.caption("*Được tính toán bởi các Spark/Flink streaming jobs*")
         
         st.markdown("""
-        **Alert Rules:**
-        - 🔴 **HIGH_PERSON_COUNT**: Person count > 3 in detection window
-        - 🟡 **LOW_CONFIDENCE**: Average confidence < 0.5
-        - 🔵 **LONG_PRESENCE**: Person present for > 5 minutes
+        **Quy tắc Cảnh báo:**
+        - 🔴 **HIGH_PERSON_COUNT**: Số người > 3 trong cửa sổ phát hiện
+        - 🟡 **LOW_CONFIDENCE**: Độ tin cậy trung bình < 0.5
+        - 🔵 **LONG_PRESENCE**: Người xuất hiện trong > 5 phút
         """)
         
-        # Sample alerts
+        # Cảnh báo mẫu
         alerts = [
             {"time": datetime.now() - timedelta(minutes=5), "type": "HIGH_PERSON_COUNT", 
              "camera": "cam_01", "message": "Detected 5 persons (threshold: 3)"},
@@ -286,52 +286,52 @@ def render_processing_demo(
     # ============================================
     # Pipeline Jobs
     # ============================================
-    st.subheader("🔧 Processing Jobs")
+    st.subheader("🔧 Các Job Xử lý")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 🔥 Spark Jobs")
+        st.markdown("#### 🔥 Các Job Spark")
         
         jobs = [
             {"name": "batch_vision_aggregator.py", "type": "Batch", 
-             "desc": "Hourly/Daily aggregations"},
+             "desc": "Tổng hợp theo Giờ/Ngày"},
             {"name": "streaming_kafka_processor.py", "type": "Streaming",
-             "desc": "CDC events from Kafka"},
+             "desc": "CDC events từ Kafka"},
             {"name": "streaming_vision_events.py", "type": "Streaming",
-             "desc": "Real-time vision events"}
+             "desc": "Sự kiện thị giác thời gian thực"}
         ]
         
         for job in jobs:
             with st.expander(f"📄 {job['name']}"):
-                st.markdown(f"**Type:** {job['type']}")
-                st.markdown(f"**Description:** {job['desc']}")
+                st.markdown(f"**Loại:** {job['type']}")
+                st.markdown(f"**Mô tả:** {job['desc']}")
                 st.code(f"""
-# Submit this job:
+# Gửi job này:
 docker exec spark-master spark-submit \\
     --master spark://spark-master:7077 \\
     /opt/bitnami/spark/jobs/{job['name']}
                 """, language="bash")
     
     with col2:
-        st.markdown("#### 🌊 Flink Jobs")
+        st.markdown("#### 🌊 Các Job Flink")
         
         flink_jobs = [
             {"name": "stream_processor.py", "type": "Streaming",
-             "desc": "Vision and CDC event processing"},
+             "desc": "Xử lý sự kiện Vision và CDC"},
             {"name": "flink_sql_analytics.py", "type": "SQL",
-             "desc": "Real-time SQL analytics"}
+             "desc": "Phân tích SQL thời gian thực"}
         ]
         
         for job in flink_jobs:
             with st.expander(f"📄 {job['name']}"):
-                st.markdown(f"**Type:** {job['type']}")
-                st.markdown(f"**Description:** {job['desc']}")
+                st.markdown(f"**Loại:** {job['type']}")
+                st.markdown(f"**Mô tả:** {job['desc']}")
                 st.code(f"""
-# Run in demo mode:
+# Chạy ở chế độ demo:
 cd homework3
 python flink/jobs/{job['name']}
 
-# Or with PyFlink:
+# Hoặc với PyFlink:
 USE_FLINK=true python flink/jobs/{job['name']}
                 """, language="bash")

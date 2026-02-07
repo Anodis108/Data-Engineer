@@ -1,17 +1,17 @@
 """
-Flink SQL Job: Vision Analytics
+Job Flink SQL: Phân tích Thị giác
 ================================
-Real-time analytics using Flink SQL API.
+Phân tích theo thời gian thực sử dụng Flink SQL API.
 
-This job demonstrates:
-- Flink Table/SQL API for stream processing
-- Windowed aggregations using SQL
-- Real-time statistics computation
+Job này minh họa:
+- Flink Table/SQL API cho xử lý luồng
+- Tổng hợp theo cửa sổ (windowed aggregations) sử dụng SQL
+- Tính toán số liệu thống kê thời gian thực
 
-Requirements:
+Yêu cầu:
     pip install apache-flink==1.18.0
 
-Usage:
+Cách dùng:
     flink run -py /opt/flink/jobs/flink_sql_analytics.py
 """
 import os
@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def run_sql_demo():
-    """Run SQL analytics demo (without Flink cluster)."""
+    """Chạy bản demo phân tích SQL (không cần cụm Flink)."""
     logger.info("=" * 60)
-    logger.info("Flink SQL Analytics Demo")
+    logger.info("Demo Phân tích Flink SQL")
     logger.info("=" * 60)
     
-    # Sample SQL queries that would run on Flink
+    # Các câu lệnh SQL mẫu sẽ chạy trên Flink
     sql_queries = {
-        "Create Vision Events Table": """
+        "Tạo Bảng Sự kiện Thị giác": """
             CREATE TABLE vision_events (
                 event_id STRING,
                 camera_id STRING,
@@ -49,7 +49,7 @@ def run_sql_demo():
             )
         """,
         
-        "Tumbling Window Aggregation": """
+        "Tổng hợp Cửa sổ Tumbling": """
             SELECT 
                 camera_id,
                 TUMBLE_START(ts_start, INTERVAL '1' MINUTE) as window_start,
@@ -62,7 +62,7 @@ def run_sql_demo():
             GROUP BY camera_id, TUMBLE(ts_start, INTERVAL '1' MINUTE)
         """,
         
-        "Alert Detection": """
+        "Phát hiện Cảnh báo": """
             SELECT 
                 camera_id,
                 ts_start,
@@ -72,7 +72,7 @@ def run_sql_demo():
             WHERE person_count > 3
         """,
         
-        "CDC Events Processing": """
+        "Xử lý Sự kiện CDC": """
             CREATE TABLE cdc_events (
                 payload ROW<
                     op STRING,
@@ -92,39 +92,35 @@ def run_sql_demo():
     for name, sql in sql_queries.items():
         logger.info(f"\n📋 {name}:")
         logger.info("-" * 40)
-        # Clean and display SQL
+        # Làm sạch và hiển thị SQL
         clean_sql = "\n".join(line.strip() for line in sql.strip().split("\n"))
         for line in clean_sql.split("\n"):
             logger.info(f"   {line}")
     
     logger.info("\n" + "=" * 60)
-    logger.info("✅ SQL Analytics Demo Complete")
-    logger.info("These queries would run on a Flink cluster with Table API")
+    logger.info("✅ Hoàn thành Demo Phân tích SQL")
+    logger.info("Các truy vấn này sẽ chạy trên cụm Flink với Table API")
     logger.info("=" * 60)
 
 
 def run_with_flink_sql():
-    """Run with actual Flink SQL API."""
-    try:
-        from pyflink.table import EnvironmentSettings, TableEnvironment
-    except ImportError:
-        logger.error("PyFlink not installed. Running demo mode.")
-        run_sql_demo()
-        return
+    """Chạy với Flink SQL API thực tế."""
+    # Bỏ try-except để hiển thị lỗi import trực tiếp nếu thiếu thư viện
+    from pyflink.table import EnvironmentSettings, TableEnvironment
     
-    logger.info("Creating Flink Table Environment...")
+    logger.info("Đang tạo Flink Table Environment...")
     
-    # Create streaming table environment
+    # Tạo streaming table environment
     settings = EnvironmentSettings.new_instance() \
         .in_streaming_mode() \
         .build()
     
     t_env = TableEnvironment.create(settings)
     
-    # Set parallelism
+    # Thiết lập mức độ song song
     t_env.get_config().set("parallelism.default", "2")
     
-    # Create source table
+    # Tạo bảng nguồn
     t_env.execute_sql("""
         CREATE TABLE vision_source (
             event_id STRING,
@@ -142,7 +138,7 @@ def run_with_flink_sql():
         )
     """)
     
-    # Windowed aggregation query
+    # Truy vấn tổng hợp theo cửa sổ
     result = t_env.sql_query("""
         SELECT 
             camera_id,
@@ -153,12 +149,12 @@ def run_with_flink_sql():
         GROUP BY camera_id, TUMBLE(event_time, INTERVAL '1' MINUTE)
     """)
     
-    # Print results
+    # In kết quả
     result.execute().print()
 
 
 def main():
-    """Main entry point."""
+    """Điểm khởi đầu chính."""
     use_flink = os.getenv("USE_FLINK", "false").lower() == "true"
     
     if use_flink:

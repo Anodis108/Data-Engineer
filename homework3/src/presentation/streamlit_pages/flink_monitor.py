@@ -1,4 +1,4 @@
-"""Streamlit page for Apache Flink cluster monitoring."""
+"""Trang Streamlit để giám sát cụm Apache Flink."""
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -8,7 +8,7 @@ from src.infrastructure.flink_client import FlinkClient
 
 
 def format_duration(ms: int) -> str:
-    """Format milliseconds to human readable duration."""
+    """Định dạng mili giây thành thời lượng dễ đọc."""
     if ms < 1000:
         return f"{ms}ms"
     elif ms < 60000:
@@ -20,7 +20,7 @@ def format_duration(ms: int) -> str:
 
 
 def format_bytes(bytes_val: int) -> str:
-    """Format bytes to human readable."""
+    """Định dạng bytes thành chuỗi dễ đọc."""
     if bytes_val < 1024:
         return f"{bytes_val} B"
     elif bytes_val < 1024 * 1024:
@@ -32,7 +32,7 @@ def format_bytes(bytes_val: int) -> str:
 
 
 def get_state_icon(state: str) -> str:
-    """Get icon for job state."""
+    """Lấy biểu tượng cho trạng thái công việc."""
     state_icons = {
         "RUNNING": "🟢",
         "FINISHED": "✅",
@@ -47,19 +47,19 @@ def get_state_icon(state: str) -> str:
 
 def render_flink_monitor(flink_client: Optional[FlinkClient]):
     """
-    Render Flink monitoring dashboard page.
+    Hiển thị trang giám sát Flink.
     
     Args:
-        flink_client: FlinkClient instance for API calls
+        flink_client: FlinkClient instance để gọi API
     """
-    st.header("🌊 Apache Flink Monitor")
-    st.markdown("Real-time monitoring of Flink cluster and streaming jobs")
+    st.header("🌊 Giám sát Apache Flink")
+    st.markdown("Giám sát thời gian thực cụm Flink và các streaming jobs")
     
-    # Connection status check
+    # Kiểm tra trạng thái kết nối
     if not flink_client:
-        st.error("❌ Flink client not initialized")
+        st.error("❌ Flink client chưa được khởi tạo")
         st.info("""
-        **To start Flink cluster:**
+        **Để khởi động cụm Flink:**
         ```bash
         cd mini_datalake_cdc_dvc
         docker compose up -d flink-jobmanager flink-taskmanager
@@ -67,46 +67,46 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
         """)
         return
     
-    # Refresh connection
-    if st.button("🔄 Refresh Connection"):
+    # Làm mới kết nối
+    if st.button("🔄 Làm mới Kết nối"):
         flink_client.refresh_connection()
         st.rerun()
     
     if not flink_client.is_connected:
-        st.error("❌ Cannot connect to Flink JobManager")
-        st.warning(f"Tried connecting to: `{flink_client.config.jobmanager_url}`")
+        st.error("❌ Không thể kết nối với Flink JobManager")
+        st.warning(f"Đã thử kết nối tới: `{flink_client.config.jobmanager_url}`")
         
-        with st.expander("🔧 Troubleshooting"):
+        with st.expander("🔧 Khắc phục sự cố"):
             st.markdown("""
-            1. **Check if Flink is running:**
+            1. **Kiểm tra xem Flink có đang chạy không:**
                ```bash
                docker ps | grep flink
                ```
             
-            2. **Start Flink cluster:**
+            2. **Khởi động cụm Flink:**
                ```bash
                cd mini_datalake_cdc_dvc
                docker compose up -d flink-jobmanager flink-taskmanager
                ```
             
-            3. **Check Flink logs:**
+            3. **Kiểm tra logs của Flink:**
                ```bash
                docker logs flink-jobmanager
                docker logs flink-taskmanager
                ```
             
-            4. **Verify port mapping:**
+            4. **Xác minh ánh xạ cổng:**
                - Web UI: http://localhost:8092
                - RPC: localhost:6123
             """)
         return
     
-    st.success("✅ Connected to Flink JobManager")
+    st.success("✅ Đã kết nối với Flink JobManager")
     
     # ============================================
-    # Cluster Overview
+    # Tổng quan Cụm
     # ============================================
-    st.subheader("📊 Cluster Overview")
+    st.subheader("📊 Tổng quan Cụm")
     
     overview = flink_client.get_cluster_overview()
     
@@ -115,16 +115,16 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
         
         with col1:
             st.metric(
-                "Flink Version",
-                overview.get("flink_version", "Unknown"),
-                help="Flink cluster version"
+                "Phiên bản Flink",
+                overview.get("flink_version", "Không xác định"),
+                help="Phiên bản cụm Flink"
             )
         
         with col2:
             st.metric(
                 "TaskManagers",
                 overview.get("taskmanagers", 0),
-                help="Number of TaskManagers"
+                help="Số lượng TaskManagers"
             )
         
         with col3:
@@ -133,24 +133,24 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
             st.metric(
                 "Slots",
                 f"{slots_avail} / {slots_total}",
-                help="Available / Total slots"
+                help="Slots khả dụng / Tổng số slots"
             )
         
         with col4:
             st.metric(
-                "Running Jobs",
+                "Jobs đang chạy",
                 overview.get("jobs_running", 0),
-                help="Number of running jobs"
+                help="Số lượng jobs đang chạy"
             )
         
-        # Jobs summary
+        # Tóm tắt Jobs
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("✅ Finished Jobs", overview.get("jobs_finished", 0))
+            st.metric("✅ Jobs đã hoàn thành", overview.get("jobs_finished", 0))
         with col2:
-            st.metric("🚫 Cancelled Jobs", overview.get("jobs_cancelled", 0))
+            st.metric("🚫 Jobs đã hủy", overview.get("jobs_cancelled", 0))
         with col3:
-            st.metric("❌ Failed Jobs", overview.get("jobs_failed", 0))
+            st.metric("❌ Jobs thất bại", overview.get("jobs_failed", 0))
     
     st.divider()
     
@@ -167,19 +167,19 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    st.markdown(f"**Slots:** {tm.free_slots} / {tm.slots_number} free")
-                    st.markdown(f"**Data Port:** {tm.data_port}")
+                    st.markdown(f"**Slots:** {tm.free_slots} / {tm.slots_number} trống")
+                    st.markdown(f"**Cổng dữ liệu:** {tm.data_port}")
                 
                 with col2:
                     st.markdown(f"**CPU Cores:** {tm.hardware_cpu_cores}")
-                    st.markdown(f"**Physical Memory:** {format_bytes(tm.hardware_physical_memory)}")
+                    st.markdown(f"**Bộ nhớ vật lý:** {format_bytes(tm.hardware_physical_memory)}")
                 
                 with col3:
                     heartbeat_sec = tm.time_since_heartbeat / 1000
-                    st.markdown(f"**Last Heartbeat:** {heartbeat_sec:.1f}s ago")
-                    st.markdown(f"**Path:** `{tm.path}`")
+                    st.markdown(f"**Nhịp tim cuối:** {heartbeat_sec:.1f}s trước")
+                    st.markdown(f"**Đường dẫn:** `{tm.path}`")
     else:
-        st.info("No TaskManagers found")
+        st.info("Không tìm thấy TaskManagers nào")
     
     st.divider()
     
@@ -188,7 +188,7 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
     # ============================================
     st.subheader("📋 Jobs")
     
-    tab_running, tab_completed = st.tabs(["🟢 Running", "📜 All Jobs"])
+    tab_running, tab_completed = st.tabs(["🟢 Đang chạy", "📜 Tất cả Jobs"])
     
     with tab_running:
         running_jobs = flink_client.get_jobs(status="running")
@@ -210,8 +210,8 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
                     
                     st.divider()
         else:
-            st.info("No running jobs")
-            st.markdown("Submit a job using the Flink CLI or REST API")
+            st.info("Không có jobs đang chạy")
+            st.markdown("Gửi một job sử dụng Flink CLI hoặc REST API")
     
     with tab_completed:
         all_jobs = flink_client.get_jobs(status="all")
@@ -221,70 +221,70 @@ def render_flink_monitor(flink_client: Optional[FlinkClient]):
             for job in all_jobs:
                 jobs_data.append({
                     "Job ID": job.job_id[:12] + "...",
-                    "Name": job.name,
-                    "State": f"{get_state_icon(job.state)} {job.state}",
-                    "Duration": format_duration(job.duration_ms),
-                    "Start Time": job.start_time.strftime("%Y-%m-%d %H:%M:%S")
+                    "Tên": job.name,
+                    "Trạng thái": f"{get_state_icon(job.state)} {job.state}",
+                    "Thời lượng": format_duration(job.duration_ms),
+                    "Thời gian bắt đầu": job.start_time.strftime("%Y-%m-%d %H:%M:%S")
                 })
             
             df = pd.DataFrame(jobs_data)
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("No jobs found")
+            st.info("Không tìm thấy jobs nào")
     
     st.divider()
     
     # ============================================
-    # Quick Actions
+    # Thao tác nhanh
     # ============================================
-    st.subheader("🚀 Quick Actions")
+    st.subheader("🚀 Thao tác nhanh")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.link_button(
-            "🌐 Open Flink UI",
+            "🌐 Mở Flink UI",
             "http://localhost:8092",
             use_container_width=True
         )
     
     with col2:
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Làm mới Dữ liệu", use_container_width=True):
             st.rerun()
     
     with col3:
-        if st.button("📋 Show Config", use_container_width=True):
+        if st.button("📋 Hiện Cấu hình", use_container_width=True):
             config = flink_client.get_cluster_config()
             if config:
                 st.session_state["show_flink_config"] = True
     
-    # Show config modal
+    # Hiện modal cấu hình
     if st.session_state.get("show_flink_config", False):
         config = flink_client.get_cluster_config()
-        with st.expander("🔧 Cluster Configuration", expanded=True):
+        with st.expander("🔧 Cấu hình Cụm", expanded=True):
             for key, value in list(config.items())[:20]:
                 st.markdown(f"`{key}`: {value}")
             if len(config) > 20:
-                st.caption(f"... and {len(config) - 20} more")
+                st.caption(f"... và {len(config) - 20} mục khác")
         st.session_state["show_flink_config"] = False
     
-    # Job submission info
-    with st.expander("📝 Submit Flink Job"):
+    # Thông tin gửi job
+    with st.expander("📝 Gửi Flink Job"):
         st.markdown("""
-        **Using Flink CLI:**
+        **Sử dụng Flink CLI:**
         ```bash
         docker exec flink-jobmanager flink run \\
             -py /opt/flink/jobs/stream_processor.py
         ```
         
-        **Using REST API:**
+        **Sử dụng REST API:**
         ```bash
         curl -X POST http://localhost:8092/jars/upload \\
             -H "Content-Type: multipart/form-data" \\
             -F "jarfile=@your-job.jar"
         ```
         
-        **Run Python job in demo mode:**
+        **Chạy Python job ở chế độ demo:**
         ```bash
         cd homework3
         python flink/jobs/stream_processor.py

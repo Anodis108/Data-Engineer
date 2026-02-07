@@ -1,10 +1,10 @@
 """
-Airflow DAG: Full Pipeline Orchestrator
+Airflow DAG: Điều phối Toàn bộ Pipeline
 =======================================
-End-to-end data pipeline coordination.
-Runs every 6 hours to orchestrate the complete data flow.
+Điều phối luồng dữ liệu từ đầu đến cuối.
+Chạy mỗi 6 giờ để điều phối toàn bộ luồng dữ liệu.
 
-Author: Data Engineering Team
+Tác giả: Data Engineering Team
 """
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -29,62 +29,55 @@ default_args = {
 
 
 def log_pipeline_start(**context):
-    """Log pipeline execution start."""
+    """Ghi log bắt đầu thực thi pipeline."""
     execution_date = context['execution_date']
-    logger.info(f"🚀 Pipeline orchestration started at {execution_date}")
+    logger.info(f"🚀 Quá trình điều phối pipeline bắt đầu lúc {execution_date}")
     return {'status': 'started', 'timestamp': str(execution_date)}
 
 
 def collect_pipeline_metrics(**context):
     """
-    Collect and log pipeline metrics.
+    Thu thập và ghi log các số liệu thống kê pipeline.
     
-    In production, this would push metrics to Prometheus
-    or another monitoring system.
+    Trong môi trường sản xuất, các số liệu này sẽ được đẩy tới Prometheus
+    hoặc một hệ thống giám sát khác.
     """
     import requests
     
     metrics = {}
     
-    # Check Spark status
-    try:
-        resp = requests.get('http://spark-master:8080/json/', timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            metrics['spark_workers'] = data.get('aliveworkers', 0)
-            metrics['spark_cores'] = data.get('cores', 0)
-            logger.info(f"Spark: {metrics['spark_workers']} workers, {metrics['spark_cores']} cores")
-    except Exception as e:
-        logger.warning(f"Could not get Spark metrics: {e}")
-        metrics['spark_workers'] = 0
+    # Kiểm tra trạng thái Spark
+    # Bỏ try-except để hiển thị lỗi trực tiếp
+    resp = requests.get('http://spark-master:8080/json/', timeout=5)
+    if resp.status_code == 200:
+        data = resp.json()
+        metrics['spark_workers'] = data.get('aliveworkers', 0)
+        metrics['spark_cores'] = data.get('cores', 0)
+        logger.info(f"Spark: {metrics['spark_workers']} workers, {metrics['spark_cores']} cores")
     
-    # Check Flink status
-    try:
-        resp = requests.get('http://flink-jobmanager:8081/overview', timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            metrics['flink_taskmanagers'] = data.get('taskmanagers', 0)
-            metrics['flink_slots'] = data.get('slots-total', 0)
-            logger.info(f"Flink: {metrics['flink_taskmanagers']} taskmanagers, {metrics['flink_slots']} slots")
-    except Exception as e:
-        logger.warning(f"Could not get Flink metrics: {e}")
-        metrics['flink_taskmanagers'] = 0
+    # Kiểm tra trạng thái Flink
+    resp = requests.get('http://flink-jobmanager:8081/overview', timeout=5)
+    if resp.status_code == 200:
+        data = resp.json()
+        metrics['flink_taskmanagers'] = data.get('taskmanagers', 0)
+        metrics['flink_slots'] = data.get('slots-total', 0)
+        logger.info(f"Flink: {metrics['flink_taskmanagers']} taskmanagers, {metrics['flink_slots']} slots")
     
-    # Push to XCom for downstream tasks
+    # Đẩy lên XCom cho các task hạ nguồn
     context['ti'].xcom_push(key='pipeline_metrics', value=metrics)
     return metrics
 
 
 def log_pipeline_completion(**context):
-    """Log pipeline completion with summary."""
+    """Ghi log hoàn thành pipeline với bản tổng kết."""
     ti = context['ti']
     metrics = ti.xcom_pull(key='pipeline_metrics', task_ids='collect_metrics')
     
     logger.info("=" * 60)
-    logger.info("📊 PIPELINE ORCHESTRATION SUMMARY")
+    logger.info("📊 TỔNG KẾT ĐIỀU PHỐI PIPELINE")
     logger.info("=" * 60)
-    logger.info(f"Execution Date: {context['execution_date']}")
-    logger.info(f"Metrics: {metrics}")
+    logger.info(f"Ngày thực thi: {context['execution_date']}")
+    logger.info(f"Số liệu: {metrics}")
     logger.info("=" * 60)
     
     return {'status': 'completed', 'metrics': metrics}
@@ -93,42 +86,42 @@ def log_pipeline_completion(**context):
 with DAG(
     dag_id='pipeline_orchestrator',
     default_args=default_args,
-    description='Full data pipeline orchestration',
-    schedule_interval='0 */6 * * *',  # Every 6 hours
+    description='Điều phối toàn bộ pipeline dữ liệu',
+    schedule_interval='0 */6 * * *',  # Mỗi 6 giờ
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
     tags=['pipeline', 'orchestration', 'master'],
     doc_md="""
-    ## Full Pipeline Orchestrator
+    ## Điều phối Toàn bộ Pipeline
     
-    Master DAG that orchestrates the complete data pipeline:
+    DAG chính điều phối toàn bộ pipeline dữ liệu:
     
-    ### Steps
-    1. **Health Checks**: Verify all services are running
-    2. **CDC Processing**: Ensure CDC events are flowing
-    3. **Batch Processing**: Trigger Spark aggregation jobs
-    4. **Quality Checks**: Validate data quality
-    5. **Metrics Collection**: Gather pipeline metrics
+    ### Các bước
+    1. **Kiểm tra Sức khỏe**: Xác nhận tất cả các dịch vụ đang chạy
+    2. **Xử lý CDC**: Đảm bảo các sự kiện CDC đang chảy qua
+    3. **Xử lý Batch**: Kích hoạt các job tổng hợp Spark
+    4. **Kiểm tra Chất lượng**: Xác nhận chất lượng dữ liệu
+    5. **Thu thập Số liệu**: Tổng hợp các số liệu thống kê pipeline
     
-    ### Schedule
-    Runs every 6 hours
+    ### Lịch trình
+    Chạy mỗi 6 giờ
     
-    ### Dependencies
-    - All infrastructure services must be healthy
-    - Spark and Flink clusters must be running
-    - MinIO storage must be accessible
+    ### Phụ thuộc
+    - Tất cả các dịch vụ hạ tầng phải khỏe mạnh
+    - Các cụm Spark và Flink phải đang chạy
+    - Kho lưu trữ MinIO phải có thể truy cập được
     """,
 ) as dag:
     
-    # Start
+    # Bắt đầu
     start = PythonOperator(
         task_id='pipeline_start',
         python_callable=log_pipeline_start,
     )
     
     # =============================
-    # HEALTH CHECKS
+    # KIỂM TRA SỨC KHỎE
     # =============================
     check_minio = BashOperator(
         task_id='check_minio',
@@ -151,23 +144,23 @@ with DAG(
     )
     
     # =============================
-    # DATA PROCESSING
+    # XỬ LÝ DỮ LIỆU
     # =============================
     run_spark_batch = BashOperator(
         task_id='run_spark_batch',
         bash_command='''
-            echo "📊 Running Spark batch aggregation..."
+            echo "📊 Đang chạy tổng hợp Spark batch..."
             docker exec spark-master spark-submit \
                 --master spark://spark-master:7077 \
                 --deploy-mode client \
                 /opt/bitnami/spark/jobs/batch_vision_aggregator.py \
-                2>&1 || echo "Spark job completed (or no data to process)"
+                2>&1 || echo "Job Spark hoàn thành (hoặc không có dữ liệu để xử lý)"
         ''',
         execution_timeout=timedelta(hours=1),
     )
     
     # =============================
-    # METRICS COLLECTION
+    # THU THẬP SỐ LIỆU
     # =============================
     collect_metrics = PythonOperator(
         task_id='collect_metrics',
@@ -175,13 +168,13 @@ with DAG(
     )
     
     # =============================
-    # COMPLETION
+    # HOÀN THÀNH
     # =============================
     notify_prometheus = BashOperator(
         task_id='notify_prometheus',
         bash_command='''
-            # Push pipeline completion metric to Prometheus Pushgateway (if available)
-            echo "Pipeline run completed at $(date)"
+            # Đẩy số liệu hoàn thành pipeline tới Prometheus Pushgateway (nếu có)
+            echo "Pipeline chạy hoàn thành lúc $(date)"
         ''',
         trigger_rule=TriggerRule.ALL_DONE,
     )
@@ -193,7 +186,7 @@ with DAG(
     )
     
     # =============================
-    # DAG FLOW
+    # LUỒNG THỰC THI DAG
     # =============================
     start >> [check_minio, check_kafka, check_spark, check_flink]
     [check_minio, check_kafka, check_spark, check_flink] >> run_spark_batch

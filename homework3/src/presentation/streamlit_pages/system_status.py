@@ -1,4 +1,4 @@
-"""System Status Page - Health check for all services."""
+"""Trang Trạng thái Hệ thống - Kiểm tra sức khỏe cho tất cả các dịch vụ."""
 import streamlit as st
 import requests
 import logging
@@ -9,25 +9,25 @@ logger = logging.getLogger(__name__)
 
 
 def render_system_status(config, minio_repo, rabbitmq_pub, trino_client, kafka_client):
-    """Render the system status page."""
+    """Hiển thị trang trạng thái hệ thống."""
     
-    st.header("⚙️ System Status")
-    st.markdown("Health check and configuration for all data lake services")
+    st.header("⚙️ Trạng thái Hệ thống")
+    st.markdown("Kiểm tra sức khỏe và cấu hình cho tất cả các dịch vụ data lake")
     
-    # Auto-refresh
+    # Tự động làm mới
     col_refresh, col_time = st.columns([1, 3])
     
     with col_refresh:
-        if st.button("🔄 Refresh All"):
+        if st.button("🔄 Làm mới Tất cả"):
             st.rerun()
     
     with col_time:
-        st.caption(f"Last check: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        st.caption(f"Lần kiểm tra cuối: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     st.divider()
     
-    # Service status grid
-    st.subheader("🏥 Service Health")
+    # Lưới trạng thái dịch vụ
+    st.subheader("🏥 Sức khỏe Dịch vụ")
     
     services = [
         _check_minio(minio_repo, config),
@@ -40,7 +40,7 @@ def render_system_status(config, minio_repo, rabbitmq_pub, trino_client, kafka_c
         _check_hive_metastore(config),
     ]
     
-    # Display in grid
+    # Hiển thị trên lưới
     cols = st.columns(4)
     for i, service in enumerate(services):
         with cols[i % 4]:
@@ -48,10 +48,10 @@ def render_system_status(config, minio_repo, rabbitmq_pub, trino_client, kafka_c
     
     st.divider()
     
-    # Detailed status
-    st.subheader("📋 Detailed Status")
+    # Trạng thái chi tiết
+    st.subheader("📋 Trạng thái Chi tiết")
     
-    tab_config, tab_endpoints = st.tabs(["⚙️ Configuration", "🔗 Endpoints"])
+    tab_config, tab_endpoints = st.tabs(["⚙️ Cấu hình", "🔗 Endpoints"])
     
     with tab_config:
         _render_configuration(config)
@@ -67,7 +67,7 @@ def _check_minio(minio_repo, config) -> dict:
         status["details"] = f"{len(minio_repo.list_buckets())} buckets"
     else:
         status["status"] = "unhealthy"
-        status["details"] = "Connection failed"
+        status["details"] = "Kết nối thất bại"
     return status
 
 
@@ -85,11 +85,9 @@ def _check_trino(trino_client, config) -> dict:
     if trino_client and trino_client.is_connected:
         status["status"] = "healthy"
     else:
-        try:
-            resp = requests.get("http://localhost:8080/v1/info", timeout=2)
-            status["status"] = "healthy" if resp.status_code == 200 else "unhealthy"
-        except:
-            status["status"] = "unhealthy"
+        # Kiểm tra API Trino trực tiếp
+        resp = requests.get("http://localhost:8080/v1/info", timeout=2)
+        status["status"] = "healthy" if resp.status_code == 200 else "unhealthy"
     return status
 
 
@@ -105,7 +103,7 @@ def _check_kafka(kafka_client, config) -> dict:
 def _check_camera(config) -> dict:
     import cv2
     import platform
-    status = {"name": "Vision Camera", "icon": "🎥", "endpoint": f"Index: {config.camera_index}"}
+    status = {"name": "Camera Vision", "icon": "🎥", "endpoint": f"Index: {config.camera_index}"}
     
     backend = "DSHOW" if platform.system() == "Windows" else "ANY"
     status["details"] = f"Backend: {backend}"
@@ -120,26 +118,22 @@ def _check_camera(config) -> dict:
 
 
 def _check_postgres_metastore(config) -> dict:
-    status = {"name": "Metastore DB", "icon": "🐘", "endpoint": "localhost:5432"}
-    try:
-        import psycopg2
-        conn = psycopg2.connect(host="localhost", port=5432, database="metastore", user="hive", password="hive_password", connect_timeout=2)
-        conn.close()
-        status["status"] = "healthy"
-    except:
-        status["status"] = "unhealthy"
+    status = {"name": "DB Metastore", "icon": "🐘", "endpoint": "localhost:5432"}
+    # Kiểm tra kết nối Metastore DB
+    import psycopg2
+    conn = psycopg2.connect(host="localhost", port=5432, database="metastore", user="hive", password="hive_password", connect_timeout=2)
+    conn.close()
+    status["status"] = "healthy"
     return status
 
 
 def _check_postgres_cdc(config) -> dict:
-    status = {"name": "CDC Postgres", "icon": "🐘", "endpoint": "localhost:5433"}
-    try:
-        import psycopg2
-        conn = psycopg2.connect(host="localhost", port=5433, database="inventory", user="dbz", password="dbz", connect_timeout=2)
-        conn.close()
-        status["status"] = "healthy"
-    except:
-        status["status"] = "unhealthy"
+    status = {"name": "Postgres CDC", "icon": "🐘", "endpoint": "localhost:5433"}
+    # Kiểm tra kết nối CDC Postgres
+    import psycopg2
+    conn = psycopg2.connect(host="localhost", port=5433, database="inventory", user="dbz", password="dbz", connect_timeout=2)
+    conn.close()
+    status["status"] = "healthy"
     return status
 
 

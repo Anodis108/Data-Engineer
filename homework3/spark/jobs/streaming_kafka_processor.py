@@ -1,14 +1,14 @@
 """
-Spark Structured Streaming Job: Kafka CDC Processor
+Job Spark Structured Streaming: Xử lý Kafka CDC
 ====================================================
-Consumes CDC events from Kafka and writes processed data to MinIO.
+Tiêu thụ các sự kiện CDC từ Kafka và ghi dữ liệu đã xử lý vào MinIO.
 
-This job demonstrates:
-- Real-time streaming from Kafka using Structured Streaming
-- Parsing Debezium CDC format
-- Writing streaming results to S3/MinIO in micro-batches
+Job này minh họa:
+- Xử lý luồng thời gian thực từ Kafka bằng Structured Streaming
+- Phân tích định dạng Debezium CDC
+- Ghi kết quả luồng vào S3/MinIO theo từng micro-batch
 
-Usage:
+Cách dùng:
     spark-submit --master spark://spark-master:7077 \
         --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,\
                    org.apache.hadoop:hadoop-aws:3.3.4,\
@@ -21,11 +21,11 @@ from pyspark.sql.types import StructType, StructField, StringType, LongType
 import logging
 import os
 
-# Configure logging
+# Cấu hình logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Cấu hình tham số
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 KAFKA_TOPICS = os.getenv("KAFKA_TOPICS", "pgserver1.public.customers")
 CHECKPOINT_LOCATION = os.getenv("CHECKPOINT_LOCATION", "/tmp/spark-checkpoint/cdc")
@@ -33,7 +33,7 @@ OUTPUT_PATH = os.getenv("OUTPUT_PATH", "s3a://lake/processed/cdc_events/")
 
 
 def create_spark_session():
-    """Create Spark session with Kafka and S3 configuration."""
+    """Tạo session Spark với cấu hình Kafka và S3."""
     return SparkSession.builder \
         .appName("KafkaCDCProcessor") \
         .config("spark.sql.streaming.checkpointLocation", CHECKPOINT_LOCATION) \
@@ -47,9 +47,9 @@ def create_spark_session():
 
 
 def read_kafka_stream(spark):
-    """Create Kafka source stream."""
-    logger.info(f"Connecting to Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
-    logger.info(f"Subscribing to topics: {KAFKA_TOPICS}")
+    """Tạo nguồn luồng dữ liệu từ Kafka."""
+    logger.info(f"Đang kết nối tới Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
+    logger.info(f"Đang đăng ký các topic: {KAFKA_TOPICS}")
     
     return spark.readStream \
         .format("kafka") \
@@ -61,8 +61,8 @@ def read_kafka_stream(spark):
 
 
 def parse_cdc_events(kafka_df):
-    """Parse CDC events from Kafka messages."""
-    # Extract value as string and parse JSON
+    """Phân tích các sự kiện CDC từ thông điệp Kafka."""
+    # Trích xuất giá trị dưới dạng string và phân tích JSON
     parsed_df = kafka_df \
         .selectExpr(
             "CAST(key AS STRING) as kafka_key",
@@ -78,7 +78,7 @@ def parse_cdc_events(kafka_df):
             "partition", 
             "offset",
             "kafka_timestamp",
-            # Parse Debezium CDC payload
+            # Phân tích payload Debezium CDC
             F.get_json_object("json_value", "$.payload.op").alias("operation"),
             F.get_json_object("json_value", "$.payload.before").alias("before_data"),
             F.get_json_object("json_value", "$.payload.after").alias("after_data"),
@@ -100,7 +100,7 @@ def parse_cdc_events(kafka_df):
 
 
 def write_to_console(df, output_mode="append"):
-    """Write stream to console for debugging."""
+    """Ghi luồng dữ liệu ra console để theo dõi (debug)."""
     query = df.writeStream \
         .format("console") \
         .outputMode(output_mode) \
@@ -112,8 +112,8 @@ def write_to_console(df, output_mode="append"):
 
 
 def write_to_minio(df):
-    """Write stream to MinIO as Parquet files."""
-    logger.info(f"Writing stream to: {OUTPUT_PATH}")
+    """Ghi luồng dữ liệu vào MinIO dưới dạng file Parquet."""
+    logger.info(f"Đang ghi luồng dữ liệu vào: {OUTPUT_PATH}")
     
     query = df.writeStream \
         .format("parquet") \
@@ -128,56 +128,50 @@ def write_to_minio(df):
 
 
 def main():
-    """Main entry point for the streaming job."""
+    """Điểm khởi đầu chính cho job streaming."""
     logger.info("=" * 60)
-    logger.info("Starting Kafka CDC Processor (Spark Streaming)")
+    logger.info("Đang bắt đầu Kafka CDC Processor (Spark Streaming)")
     logger.info("=" * 60)
     
-    # Create Spark session
+    # Tạo session Spark
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     
-    try:
-        # Read from Kafka
-        kafka_df = read_kafka_stream(spark)
-        
-        # Parse CDC events
-        parsed_df = parse_cdc_events(kafka_df)
-        
-        # Select columns for output
-        output_df = parsed_df.select(
-            "topic",
-            "partition",
-            "offset",
-            "kafka_timestamp",
-            "operation_name",
-            "source_table",
-            "source_db",
-            "before_data",
-            "after_data",
-            "processing_time",
-            "event_date"
-        )
-        
-        # Write to console for monitoring
-        console_query = write_to_console(output_df)
-        
-        # Also write to MinIO
-        # Uncomment when ready to persist:
-        # minio_query = write_to_minio(output_df)
-        
-        logger.info("✅ Streaming job started. Waiting for data...")
-        logger.info(f"   Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
-        logger.info(f"   Topics: {KAFKA_TOPICS}")
-        
-        # Wait for termination
-        console_query.awaitTermination()
-        
-    except Exception as e:
-        logger.error(f"Streaming job failed: {e}")
-        raise
-    finally:
-        spark.stop()
+    # Đọc từ Kafka
+    kafka_df = read_kafka_stream(spark)
+    
+    # Phân tích các sự kiện CDC
+    parsed_df = parse_cdc_events(kafka_df)
+    
+    # Chọn các cột để xuất dữ liệu
+    output_df = parsed_df.select(
+        "topic",
+        "partition",
+        "offset",
+        "kafka_timestamp",
+        "operation_name",
+        "source_table",
+        "source_db",
+        "before_data",
+        "after_data",
+        "processing_time",
+        "event_date"
+    )
+    
+    # Ghi ra console để giám sát
+    console_query = write_to_console(output_df)
+    
+    # Có thể ghi vào MinIO bằng cách bỏ chú thích:
+    # minio_query = write_to_minio(output_df)
+    
+    logger.info("✅ Job streaming đã bắt đầu. Đang chờ dữ liệu...")
+    logger.info(f"   Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
+    logger.info(f"   Topics: {KAFKA_TOPICS}")
+    
+    # Chờ cho đến khi dừng job
+    console_query.awaitTermination()
+    
+    spark.stop()
 
 
 if __name__ == "__main__":

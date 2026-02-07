@@ -1,14 +1,14 @@
 """
-Spark Streaming Job: Real-time Vision Event Processor
+Job Spark Streaming: Xử lý Sự kiện Thị giác Thời gian thực
 ======================================================
-Processes vision events from RabbitMQ/Kafka in real-time.
+Xử lý các sự kiện thị giác từ RabbitMQ/Kafka theo thời gian thực.
 
-This job demonstrates:
-- Real-time event processing with windowed aggregations
-- Alert generation based on thresholds
-- Writing streaming results to console and optionally to storage
+Job này minh họa:
+- Xử lý sự kiện thời gian thực với các phép tổng hợp theo cửa sổ (windowed aggregations)
+- Tạo cảnh báo dựa trên các ngưỡng định sẵn
+- Ghi kết quả luồng ra console và (tùy chọn) vào kho lưu trữ
 
-Usage:
+Cách dùng:
     spark-submit --master spark://spark-master:7077 \
         --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
         /opt/bitnami/spark/jobs/streaming_vision_events.py
@@ -19,20 +19,20 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 import logging
 import os
 
-# Configure logging
+# Cấu hình logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Cấu hình tham số
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 VISION_TOPIC = os.getenv("VISION_TOPIC", "vision.events")
-ALERT_THRESHOLD = int(os.getenv("ALERT_THRESHOLD", "3"))  # Alert if > 3 persons
+ALERT_THRESHOLD = int(os.getenv("ALERT_THRESHOLD", "3"))  # Cảnh báo nếu > 3 người
 WINDOW_DURATION = os.getenv("WINDOW_DURATION", "1 minute")
 SLIDE_DURATION = os.getenv("SLIDE_DURATION", "30 seconds")
 
 
 def create_spark_session():
-    """Create Spark session for streaming."""
+    """Tạo session Spark cho xử lý luồng (streaming)."""
     return SparkSession.builder \
         .appName("VisionEventStreamProcessor") \
         .config("spark.sql.shuffle.partitions", "2") \
@@ -40,11 +40,11 @@ def create_spark_session():
 
 
 def get_vision_event_schema():
-    """Schema for vision event JSON messages."""
+    """Schema cho các thông điệp JSON sự kiện thị giác."""
     return StructType([
         StructField("event_id", StringType(), True),
         StructField("camera_id", StringType(), True),
-        StructField("ts_start", StringType(), True),  # ISO format string
+        StructField("ts_start", StringType(), True),  # Định dạng chuỗi ISO
         StructField("person_count", IntegerType(), True),
         StructField("conf_avg", DoubleType(), True),
         StructField("event_type", StringType(), True)
@@ -52,8 +52,8 @@ def get_vision_event_schema():
 
 
 def read_vision_stream(spark):
-    """Read vision events from Kafka."""
-    logger.info(f"Connecting to Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
+    """Đọc dữ liệu sự kiện thị giác từ Kafka."""
+    logger.info(f"Đang kết nối tới Kafka: {KAFKA_BOOTSTRAP_SERVERS}")
     logger.info(f"Topic: {VISION_TOPIC}")
     
     return spark.readStream \
@@ -65,7 +65,7 @@ def read_vision_stream(spark):
 
 
 def parse_vision_events(kafka_df):
-    """Parse vision event JSON from Kafka messages."""
+    """Phân tích JSON sự kiện thị giác từ các thông điệp Kafka."""
     schema = get_vision_event_schema()
     
     return kafka_df \
@@ -87,7 +87,7 @@ def parse_vision_events(kafka_df):
 
 
 def create_windowed_aggregations(df):
-    """Create sliding window aggregations."""
+    """Tạo các phép tổng hợp theo cửa sổ trượt (sliding window)."""
     return df \
         .groupBy(
             F.window("event_time", WINDOW_DURATION, SLIDE_DURATION),
@@ -113,7 +113,7 @@ def create_windowed_aggregations(df):
 
 
 def detect_alerts(df):
-    """Detect alerts when person count exceeds threshold."""
+    """Phát hiện cảnh báo khi số lượng người vượt ngưỡng."""
     return df \
         .filter(F.col("max_persons") > ALERT_THRESHOLD) \
         .withColumn("alert_type", F.lit("HIGH_PERSON_COUNT")) \
@@ -121,9 +121,9 @@ def detect_alerts(df):
             F.concat(
                 F.lit("⚠️ Camera "),
                 F.col("camera_id"),
-                F.lit(": Detected "),
+                F.lit(": Phát hiện "),
                 F.col("max_persons").cast("string"),
-                F.lit(" persons (threshold: "),
+                F.lit(" người (ngưỡng: "),
                 F.lit(str(ALERT_THRESHOLD)),
                 F.lit(")")
             )
@@ -132,58 +132,53 @@ def detect_alerts(df):
 
 
 def main():
-    """Main entry point for vision event streaming."""
+    """Điểm khởi đầu chính cho xử lý luồng sự kiện thị giác."""
     logger.info("=" * 60)
-    logger.info("Starting Vision Event Stream Processor")
-    logger.info(f"Alert threshold: {ALERT_THRESHOLD} persons")
-    logger.info(f"Window: {WINDOW_DURATION}, Slide: {SLIDE_DURATION}")
+    logger.info("Đang bắt đầu Vision Event Stream Processor")
+    logger.info(f"Ngưỡng cảnh báo: {ALERT_THRESHOLD} người")
+    logger.info(f"Cửa sổ: {WINDOW_DURATION}, Trượt: {SLIDE_DURATION}")
     logger.info("=" * 60)
     
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     
-    try:
-        # Read from Kafka
-        kafka_df = read_vision_stream(spark)
-        
-        # Parse events
-        events_df = parse_vision_events(kafka_df)
-        
-        # Create windowed aggregations
-        windowed_df = create_windowed_aggregations(events_df)
-        
-        # Detect alerts
-        alerts_df = detect_alerts(windowed_df)
-        
-        # Output windowed stats to console
-        stats_query = windowed_df.writeStream \
-            .format("console") \
-            .outputMode("update") \
-            .option("truncate", "false") \
-            .trigger(processingTime="30 seconds") \
-            .queryName("windowed_stats") \
-            .start()
-        
-        # Output alerts to console
-        alerts_query = alerts_df.writeStream \
-            .format("console") \
-            .outputMode("update") \
-            .option("truncate", "false") \
-            .trigger(processingTime="10 seconds") \
-            .queryName("alerts") \
-            .start()
-        
-        logger.info("✅ Vision event streaming started!")
-        logger.info("   Waiting for events...")
-        
-        # Wait for any query to terminate
-        spark.streams.awaitAnyTermination()
-        
-    except Exception as e:
-        logger.error(f"Streaming job failed: {e}")
-        raise
-    finally:
-        spark.stop()
+    # Đọc từ Kafka
+    kafka_df = read_vision_stream(spark)
+    
+    # Phân tích sự kiện
+    events_df = parse_vision_events(kafka_df)
+    
+    # Tạo tổng hợp theo cửa sổ
+    windowed_df = create_windowed_aggregations(events_df)
+    
+    # Phát hiện cảnh báo
+    alerts_df = detect_alerts(windowed_df)
+    
+    # Xuất số liệu thống kê ra console
+    stats_query = windowed_df.writeStream \
+        .format("console") \
+        .outputMode("update") \
+        .option("truncate", "false") \
+        .trigger(processingTime="30 seconds") \
+        .queryName("windowed_stats") \
+        .start()
+    
+    # Xuất các cảnh báo ra console
+    alerts_query = alerts_df.writeStream \
+        .format("console") \
+        .outputMode("update") \
+        .option("truncate", "false") \
+        .trigger(processingTime="10 seconds") \
+        .queryName("alerts") \
+        .start()
+    
+    logger.info("✅ Luồng xư lý sự kiện thị giác đã bắt đầu!")
+    logger.info("   Đang chờ sự kiện...")
+    
+    # Chờ cho đến khi bất kỳ query nào dừng lại
+    spark.streams.awaitAnyTermination()
+    
+    spark.stop()
 
 
 if __name__ == "__main__":

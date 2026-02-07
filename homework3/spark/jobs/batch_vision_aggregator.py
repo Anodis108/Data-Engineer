@@ -1,14 +1,14 @@
 """
-Spark Batch Job: Vision Event Aggregator
+Job Spark Batch: Tổng hợp Sự kiện Thị giác
 =========================================
-Reads raw vision events from MinIO (S3) and creates hourly/daily aggregations.
+Đọc sự kiện thị giác thô từ MinIO (S3) và tạo các bản tổng hợp theo giờ/ngày.
 
-This job demonstrates:
-- Reading Parquet files from S3-compatible storage (MinIO)
-- Data transformation and aggregation with Spark SQL
-- Writing processed data back to S3 with partitioning
+Job này minh họa:
+- Đọc file Parquet từ kho lưu trữ tương thích S3 (MinIO)
+- Biến đổi và tổng hợp dữ liệu với Spark SQL
+- Ghi dữ liệu đã xử lý trở lại S3 với phân vùng (partitioning)
 
-Usage:
+Cách dùng:
     spark-submit --master spark://spark-master:7077 \
         --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \
         /opt/bitnami/spark/jobs/batch_vision_aggregator.py
@@ -19,13 +19,13 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 import logging
 from datetime import datetime
 
-# Configure logging
+# Cấu hình logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def create_spark_session():
-    """Create Spark session with S3/MinIO configuration."""
+    """Tạo session Spark với cấu hình S3/MinIO."""
     return SparkSession.builder \
         .appName("VisionEventAggregator") \
         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
@@ -39,7 +39,7 @@ def create_spark_session():
 
 
 def get_vision_events_schema():
-    """Define schema for vision events Parquet files."""
+    """Định nghĩa schema cho các file Parquet sự kiện thị giác."""
     return StructType([
         StructField("event_id", StringType(), True),
         StructField("camera_id", StringType(), True),
@@ -54,26 +54,22 @@ def get_vision_events_schema():
 
 
 def read_raw_events(spark, input_path: str):
-    """Read raw vision events from MinIO."""
-    logger.info(f"Reading raw events from: {input_path}")
+    """Đọc sự kiện thị giác thô từ MinIO."""
+    logger.info(f"Đang đọc sự kiện thô từ: {input_path}")
     
-    try:
-        df = spark.read \
-            .schema(get_vision_events_schema()) \
-            .parquet(input_path)
-        
-        count = df.count()
-        logger.info(f"Loaded {count} raw events")
-        return df
-    except Exception as e:
-        logger.warning(f"No data found at {input_path}: {e}")
-        # Return empty DataFrame with schema
-        return spark.createDataFrame([], get_vision_events_schema())
+    # Bỏ try-except để hiển thị lỗi trực tiếp
+    df = spark.read \
+        .schema(get_vision_events_schema()) \
+        .parquet(input_path)
+    
+    count = df.count()
+    logger.info(f"Đã tải {count} sự kiện thô")
+    return df
 
 
 def aggregate_hourly(df):
-    """Create hourly aggregations."""
-    logger.info("Creating hourly aggregations...")
+    """Tạo tổng hợp theo giờ."""
+    logger.info("Đang tạo tổng hợp theo giờ...")
     
     return df \
         .withColumn("hour", F.date_trunc("hour", "ts_start")) \
@@ -92,8 +88,8 @@ def aggregate_hourly(df):
 
 
 def aggregate_daily(df):
-    """Create daily aggregations."""
-    logger.info("Creating daily aggregations...")
+    """Tạo tổng hợp theo ngày."""
+    logger.info("Đang tạo tổng hợp theo ngày...")
     
     return df \
         .withColumn("date", F.to_date("ts_start")) \
@@ -111,11 +107,11 @@ def aggregate_daily(df):
 
 
 def write_aggregations(df, output_path: str, partition_cols: list):
-    """Write aggregated data to MinIO."""
-    logger.info(f"Writing aggregations to: {output_path}")
+    """Ghi dữ liệu tổng hợp vào MinIO."""
+    logger.info(f"Đang ghi dữ liệu tổng hợp vào: {output_path}")
     
     if df.count() == 0:
-        logger.warning("No data to write, skipping...")
+        logger.warning("Không có dữ liệu để ghi, đang bỏ qua...")
         return
     
     df.write \
@@ -123,67 +119,62 @@ def write_aggregations(df, output_path: str, partition_cols: list):
         .partitionBy(*partition_cols) \
         .parquet(output_path)
     
-    logger.info(f"Successfully wrote {df.count()} records")
+    logger.info(f"Đã ghi thành công {df.count()} bản ghi")
 
 
 def main():
-    """Main entry point for the batch job."""
+    """Điểm khởi đầu chính cho job batch."""
     logger.info("=" * 60)
-    logger.info("Starting Vision Event Aggregator Job")
-    logger.info(f"Timestamp: {datetime.now().isoformat()}")
+    logger.info("Bắt đầu Job Tổng hợp Sự kiện Thị giác")
+    logger.info(f"Thời điểm: {datetime.now().isoformat()}")
     logger.info("=" * 60)
     
-    # Create Spark session
+    # Tạo session Spark
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     
-    try:
-        # Read raw events
-        raw_df = read_raw_events(
-            spark, 
-            "s3a://lake/raw/events/person_detection/"
+    # Đọc sự kiện thô
+    raw_df = read_raw_events(
+        spark, 
+        "s3a://lake/raw/events/person_detection/"
+    )
+    
+    if raw_df.count() > 0:
+        # Cache để sử dụng cho nhiều lần tổng hợp
+        raw_df.cache()
+        
+        # Tổng hợp theo giờ
+        hourly_agg = aggregate_hourly(raw_df)
+        write_aggregations(
+            hourly_agg,
+            "s3a://lake/processed/vision_hourly_stats/",
+            ["camera_id"]
         )
         
-        if raw_df.count() > 0:
-            # Cache for multiple aggregations
-            raw_df.cache()
-            
-            # Hourly aggregation
-            hourly_agg = aggregate_hourly(raw_df)
-            write_aggregations(
-                hourly_agg,
-                "s3a://lake/processed/vision_hourly_stats/",
-                ["camera_id"]
-            )
-            
-            # Daily aggregation
-            daily_agg = aggregate_daily(raw_df)
-            write_aggregations(
-                daily_agg,
-                "s3a://lake/processed/vision_daily_stats/",
-                ["camera_id"]
-            )
-            
-            # Show sample results
-            logger.info("\n📊 Sample Hourly Aggregation:")
-            hourly_agg.show(5, truncate=False)
-            
-            logger.info("\n📊 Sample Daily Aggregation:")
-            daily_agg.show(5, truncate=False)
-            
-            raw_df.unpersist()
-        else:
-            logger.info("No raw events found. Creating sample output...")
-            
-        logger.info("=" * 60)
-        logger.info("✅ Vision Event Aggregator Job Completed Successfully")
-        logger.info("=" * 60)
+        # Tổng hợp theo ngày
+        daily_agg = aggregate_daily(raw_df)
+        write_aggregations(
+            daily_agg,
+            "s3a://lake/processed/vision_daily_stats/",
+            ["camera_id"]
+        )
         
-    except Exception as e:
-        logger.error(f"Job failed: {e}")
-        raise
-    finally:
-        spark.stop()
+        # Hiển thị kết quả mẫu
+        logger.info("\n📊 Mẫu Tổng hợp theo Giờ:")
+        hourly_agg.show(5, truncate=False)
+        
+        logger.info("\n📊 Mẫu Tổng hợp theo Ngày:")
+        daily_agg.show(5, truncate=False)
+        
+        raw_df.unpersist()
+    else:
+        logger.info("Không tìm thấy sự kiện thô.")
+        
+    logger.info("=" * 60)
+    logger.info("✅ Hoàn thành Job Tổng hợp Sự kiện Thị giác thành công")
+    logger.info("=" * 60)
+    
+    spark.stop()
 
 
 if __name__ == "__main__":

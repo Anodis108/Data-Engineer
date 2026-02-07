@@ -1,10 +1,10 @@
 """
-Airflow DAG: Data Quality Checks
+Airflow DAG: Kiểm tra Chất lượng Dữ liệu
 ================================
-Validates data quality and integrity across the data lake.
-Runs daily at 6 AM after batch processing completes.
+Kiểm tra tính đúng đắn và toàn vẹn của dữ liệu trong data lake.
+Chạy hàng ngày vào lúc 6 giờ sáng sau khi xử lý batch hoàn tất.
 
-Author: Data Engineering Team
+Tác giả: Data Engineering Team
 """
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -28,16 +28,16 @@ default_args = {
 
 def check_minio_data_exists(**context):
     """
-    Check if today's raw data exists in MinIO.
+    Kiểm tra xem dữ liệu thô hôm nay có tồn tại trong MinIO không.
     
-    This validates that the vision detection pipeline
-    is producing data as expected.
+    Điều này xác nhận rằng pipeline phát hiện thị giác
+    đang tạo ra dữ liệu như mong đợi.
     """
     import boto3
     from datetime import date
     from botocore.client import Config
     
-    # MinIO connection
+    # Kết nối MinIO
     s3 = boto3.client(
         's3',
         endpoint_url='http://minio:9000',
@@ -49,31 +49,27 @@ def check_minio_data_exists(**context):
     today = date.today().isoformat()
     prefix = f"raw/events/person_detection/date={today}/"
     
-    try:
-        response = s3.list_objects_v2(
-            Bucket='lake',
-            Prefix=prefix,
-            MaxKeys=1
-        )
-        
-        if 'Contents' in response and len(response['Contents']) > 0:
-            logger.info(f"✅ Data exists for {today}: {response['KeyCount']} objects found")
-            return True
-        else:
-            logger.warning(f"⚠️ No data found for {today} in {prefix}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Failed to check MinIO data: {e}")
-        raise
+    # Bỏ try-except để hiển thị lỗi trực tiếp
+    response = s3.list_objects_v2(
+        Bucket='lake',
+        Prefix=prefix,
+        MaxKeys=1
+    )
+    
+    if 'Contents' in response and len(response['Contents']) > 0:
+        logger.info(f"✅ Dữ liệu tồn tại cho ngày {today}: tìm thấy {response['KeyCount']} đối tượng")
+        return True
+    else:
+        logger.warning(f"⚠️ Không tìm thấy dữ liệu cho ngày {today} tại {prefix}")
+        return False
 
 
 def check_processed_data_freshness(**context):
     """
-    Check if processed data is recent.
+    Kiểm tra xem dữ liệu đã xử lý có mới không.
     
-    Validates that aggregation jobs are running
-    and producing output.
+    Xác nhận rằng các job tổng hợp đang chạy
+    và tạo ra kết quả đầu ra.
     """
     import boto3
     from datetime import datetime, timedelta
@@ -87,39 +83,35 @@ def check_processed_data_freshness(**context):
         config=Config(signature_version='s3v4')
     )
     
-    try:
-        response = s3.list_objects_v2(
-            Bucket='lake',
-            Prefix='processed/vision_hourly_stats/',
-            MaxKeys=10
-        )
-        
-        if 'Contents' not in response:
-            logger.warning("No processed data found")
-            return False
-        
-        # Check if any file was modified in the last 24 hours
-        cutoff = datetime.now() - timedelta(hours=24)
-        recent_files = [
-            obj for obj in response['Contents']
-            if obj['LastModified'].replace(tzinfo=None) > cutoff
-        ]
-        
-        if recent_files:
-            logger.info(f"✅ Found {len(recent_files)} recent processed files")
-            return True
-        else:
-            logger.warning("⚠️ No recent processed files found")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Failed to check processed data: {e}")
-        raise
+    # Bỏ try-except để hiển thị lỗi trực tiếp
+    response = s3.list_objects_v2(
+        Bucket='lake',
+        Prefix='processed/vision_hourly_stats/',
+        MaxKeys=10
+    )
+    
+    if 'Contents' not in response:
+        logger.warning("Không tìm thấy dữ liệu đã xử lý")
+        return False
+    
+    # Kiểm tra xem có file nào được sửa đổi trong 24 giờ qua không
+    cutoff = datetime.now() - timedelta(hours=24)
+    recent_files = [
+        obj for obj in response['Contents']
+        if obj['LastModified'].replace(tzinfo=None) > cutoff
+    ]
+    
+    if recent_files:
+        logger.info(f"✅ Tìm thấy {len(recent_files)} file đã xử lý gần đây")
+        return True
+    else:
+        logger.warning("⚠️ Không tìm thấy file đã xử lý gần đây")
+        return False
 
 
 def validate_data_schema(**context):
     """
-    Validate that Parquet files have expected schema.
+    Xác nhận các file Parquet có schema như mong đợi.
     """
     import boto3
     import pyarrow.parquet as pq
@@ -139,70 +131,66 @@ def validate_data_schema(**context):
         'person_count', 'conf_avg', 'event_type'
     }
     
-    try:
-        # List some Parquet files
-        response = s3.list_objects_v2(
-            Bucket='lake',
-            Prefix='raw/events/person_detection/',
-            MaxKeys=5
-        )
-        
-        if 'Contents' not in response:
-            logger.info("No raw data to validate")
-            return True
-        
-        for obj in response['Contents']:
-            if obj['Key'].endswith('.parquet'):
-                # Download and check schema
-                file_obj = s3.get_object(Bucket='lake', Key=obj['Key'])
-                parquet_file = pq.read_table(io.BytesIO(file_obj['Body'].read()))
-                
-                actual_columns = set(parquet_file.column_names)
-                missing = expected_columns - actual_columns
-                
-                if missing:
-                    logger.warning(f"Missing columns in {obj['Key']}: {missing}")
-                else:
-                    logger.info(f"✅ Schema valid for {obj['Key']}")
-                
-                break  # Only check one file
-        
+    # Bỏ try-except để hiển thị lỗi trực tiếp
+    # Liệt kê một số file Parquet
+    response = s3.list_objects_v2(
+        Bucket='lake',
+        Prefix='raw/events/person_detection/',
+        MaxKeys=5
+    )
+    
+    if 'Contents' not in response:
+        logger.info("Không có dữ liệu thô để kiểm tra")
         return True
-        
-    except Exception as e:
-        logger.error(f"❌ Schema validation failed: {e}")
-        raise
+    
+    for obj in response['Contents']:
+        if obj['Key'].endswith('.parquet'):
+            # Tải xuống và kiểm tra schema
+            file_obj = s3.get_object(Bucket='lake', Key=obj['Key'])
+            parquet_file = pq.read_table(io.BytesIO(file_obj['Body'].read()))
+            
+            actual_columns = set(parquet_file.column_names)
+            missing = expected_columns - actual_columns
+            
+            if missing:
+                logger.warning(f"Thiếu các cột trong {obj['Key']}: {missing}")
+            else:
+                logger.info(f"✅ Schema hợp lệ cho {obj['Key']}")
+            
+            break  # Chỉ kiểm tra một file
+    
+    return True
 
 
 with DAG(
     dag_id='data_quality_check',
     default_args=default_args,
-    description='Daily data quality validation for the data lake',
-    schedule_interval='0 6 * * *',  # Run at 6 AM daily
+    description='Kiểm tra chất lượng dữ liệu hàng ngày cho data lake',
+    schedule_interval='0 6 * * *',  # Chạy lúc 6 giờ sáng hàng ngày
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=['quality', 'validation', 'monitoring'],
     doc_md="""
-    ## Data Quality Checks
+    ## Kiểm tra Chất lượng Dữ liệu
     
-    This DAG validates data quality across the data lake:
+    DAG này thực hiện kiểm tra chất lượng dữ liệu trong data lake:
     
-    1. **Raw Data Check**: Verifies today's vision events exist
-    2. **Processed Data Freshness**: Checks aggregation outputs are recent
-    3. **Schema Validation**: Validates Parquet file schemas
-    4. **Service Health**: Ensures all services are running
+    1. **Kiểm tra Dữ liệu Thô**: Xác nhận các sự kiện thị giác hôm nay tồn tại
+    2. **Độ mới của Dữ liệu đã Xử lý**: Kiểm tra các đầu ra tổng hợp là gần đây
+    3. **Xác nhận Schema**: Kiểm tra schema của các file Parquet
+    4. **Sức khỏe Dịch vụ**: Đảm bảo tất cả các dịch vụ đang chạy
     
-    ### Schedule
-    Runs daily at 6:00 AM UTC (after batch processing)
+    ### Lịch trình
+    Chạy hàng ngày lúc 6:00 sáng UTC (sau khi xử lý batch)
     
-    ### Alerts
-    Failures trigger email notifications to the data team.
+    ### Cảnh báo
+    Lỗi sẽ kích hoạt thông báo email cho đội ngũ dữ liệu.
     """,
 ) as dag:
     
     start = EmptyOperator(task_id='start')
     
-    # Service health checks
+    # Kiểm tra sức khỏe dịch vụ
     check_minio_health = BashOperator(
         task_id='check_minio_health',
         bash_command='curl -sf http://minio:9000/minio/health/live || exit 1',
@@ -213,7 +201,7 @@ with DAG(
         bash_command='curl -sf http://trino-coordinator:8080/v1/info || echo "Trino not available"',
     )
     
-    # Data quality checks
+    # Các bước kiểm tra chất lượng dữ liệu
     check_raw_data = PythonOperator(
         task_id='check_raw_data_exists',
         python_callable=check_minio_data_exists,
@@ -229,16 +217,16 @@ with DAG(
         python_callable=validate_data_schema,
     )
     
-    # Summary task
+    # Task tổng kết
     quality_summary = BashOperator(
         task_id='quality_summary',
-        bash_command='echo "Data quality checks completed at $(date)"',
+        bash_command='echo "Các bước kiểm tra chất lượng dữ liệu hoàn thành lúc $(date)"',
         trigger_rule=TriggerRule.ALL_DONE,
     )
     
     end = EmptyOperator(task_id='end')
     
-    # DAG flow
+    # Luồng thực thi DAG
     start >> [check_minio_health, check_trino_health]
     check_minio_health >> check_raw_data >> check_processed_freshness >> validate_schema
     [check_trino_health, validate_schema] >> quality_summary >> end

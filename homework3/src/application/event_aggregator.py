@@ -1,4 +1,4 @@
-"""Event aggregator for 5-second window detection aggregation."""
+"""Bộ tổng hợp sự kiện cho việc phát hiện trong cửa sổ 5 giây."""
 import logging
 from datetime import datetime, timezone
 from enum import Enum
@@ -13,23 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 class PresenceState(Enum):
-    """State machine states for person presence detection."""
+    """Các trạng thái của máy trạng thái cho việc phát hiện sự hiện diện của người."""
     IDLE = "idle"
     PERSON_PRESENT = "person_present"
 
 
 class EventAggregator:
     """
-    Aggregates person detections over time windows.
+    Tổng hợp các phát hiện người qua các cửa sổ thời gian.
     
-    State machine:
-    - IDLE: No person detected in zone
-    - PERSON_PRESENT: Person detected, accumulating stats
+    Máy trạng thái (State machine):
+    - IDLE: Không phát hiện người trong vùng
+    - PERSON_PRESENT: Phát hiện người, đang tích lũy thống kê
     
-    Events emitted:
-    - person_present_start: First detection after IDLE
-    - person_still_present: Heartbeat every window_sec while person present
-    - person_left: No detection for gap_sec after being present
+    Các sự kiện được phát ra:
+    - person_present_start: Phát hiện đầu tiên sau trạng thái IDLE
+    - person_still_present: Heartbeat mỗi window_sec khi người vẫn còn
+    - person_left: Không phát hiện trong gap_sec sau khi đã hiện diện
     """
     
     def __init__(
@@ -39,24 +39,24 @@ class EventAggregator:
         gap_sec: int = 2
     ):
         """
-        Initialize event aggregator.
+        Khởi tạo bộ tổng hợp sự kiện.
         
         Args:
-            camera_id: Camera identifier for events
-            window_sec: Window duration for heartbeat events (seconds)
-            gap_sec: Gap duration to trigger person_left event (seconds)
+            camera_id: Định danh camera cho các sự kiện
+            window_sec: Thời lượng cửa sổ cho các sự kiện heartbeat (giây)
+            gap_sec: Thời lượng khoảng trống để kích hoạt sự kiện person_left (giây)
         """
         self.camera_id = camera_id
         self.window_sec = window_sec
         self.gap_sec = gap_sec
         
-        # State
+        # Trạng thái
         self._state = PresenceState.IDLE
         self._window_start: Optional[datetime] = None
         self._last_detection_time: Optional[datetime] = None
         self._session_start: Optional[datetime] = None
         
-        # Accumulated stats for current window
+        # Thống kê tích lũy cho cửa sổ hiện tại
         self._person_counts: list[int] = []
         self._confidences: list[float] = []
         self._last_frame: Optional[np.ndarray] = None
@@ -64,7 +64,7 @@ class EventAggregator:
     
     @property
     def state(self) -> PresenceState:
-        """Current presence state."""
+        """Trạng thái hiện diện hiện tại."""
         return self._state
     
     def update(
@@ -74,19 +74,19 @@ class EventAggregator:
         current_time: Optional[datetime] = None
     ) -> Optional[VisionEvent]:
         """
-        Update aggregator with new detections.
+        Cập nhật bộ tổng hợp với các phát hiện mới.
         
         Args:
-            detections: List of detections from current frame
-            frame: Current frame (for snapshot)
-            current_time: Current timestamp (default: now)
+            detections: Danh sách các phát hiện từ khung hình hiện tại
+            frame: Khung hình hiện tại (để chụp ảnh snapshot)
+            current_time: Thời gian hiện tại (mặc định: now)
         
         Returns:
-            VisionEvent if an event should be emitted, None otherwise
+            VisionEvent nếu một sự kiện cần được phát ra, ngược lại là None
         """
         now = current_time or datetime.now(timezone.utc)
         
-        # Filter to only detections inside the zone
+        # Lọc chỉ các phát hiện bên trong vùng
         inside_zone = [d for d in detections if d.is_inside_zone]
         has_person = len(inside_zone) > 0
         
@@ -94,14 +94,14 @@ class EventAggregator:
         
         if self._state == PresenceState.IDLE:
             if has_person:
-                # Transition: IDLE -> PERSON_PRESENT
+                # Chuyển trạng thái: IDLE -> PERSON_PRESENT
                 self._state = PresenceState.PERSON_PRESENT
                 self._window_start = now
                 self._session_start = now
                 self._last_detection_time = now
                 self._is_first_window = True
                 
-                # Start accumulating
+                # Bắt đầu tích lũy
                 self._person_counts = [len(inside_zone)]
                 self._confidences = [d.confidence for d in inside_zone]
                 self._last_frame = frame.copy()
@@ -110,21 +110,21 @@ class EventAggregator:
         
         elif self._state == PresenceState.PERSON_PRESENT:
             if has_person:
-                # Continue accumulating
+                # Tiếp tục tích lũy
                 self._last_detection_time = now
                 self._person_counts.append(len(inside_zone))
                 self._confidences.extend([d.confidence for d in inside_zone])
                 self._last_frame = frame.copy()
                 
-                # Check if window is complete
+                # Kiểm tra xem cửa sổ đã hoàn tất chưa
                 window_elapsed = (now - self._window_start).total_seconds()
                 
                 if window_elapsed >= self.window_sec:
-                    # Emit event
+                    # Phát sự kiện
                     event_type = "person_present_start" if self._is_first_window else "person_still_present"
                     event = self._create_event(now, event_type)
                     
-                    # Reset window
+                    # Đặt lại cửa sổ
                     self._window_start = now
                     self._person_counts = []
                     self._confidences = []
@@ -132,14 +132,14 @@ class EventAggregator:
                     
                     logger.debug(f"Emitting {event_type} event")
             else:
-                # No person detected - check gap
+                # Không phát hiện người - kiểm tra khoảng trống (gap)
                 gap_elapsed = (now - self._last_detection_time).total_seconds()
                 
                 if gap_elapsed >= self.gap_sec:
-                    # Transition: PERSON_PRESENT -> IDLE
+                    # Chuyển trạng thái: PERSON_PRESENT -> IDLE
                     event = self._create_event(now, "person_left")
                     
-                    # Reset state
+                    # Đặt lại trạng thái
                     self._state = PresenceState.IDLE
                     self._window_start = None
                     self._session_start = None
@@ -154,7 +154,7 @@ class EventAggregator:
         return event
     
     def _create_event(self, end_time: datetime, event_type: str) -> VisionEvent:
-        """Create a VisionEvent from accumulated stats."""
+        """Tạo một VisionEvent từ các thống kê đã tích lũy."""
         avg_count = sum(self._person_counts) / len(self._person_counts) if self._person_counts else 0
         max_count = max(self._person_counts) if self._person_counts else 0
         avg_conf = sum(self._confidences) / len(self._confidences) if self._confidences else 0
@@ -168,19 +168,19 @@ class EventAggregator:
             conf_avg=round(avg_conf, 3),
             conf_max=round(max_conf, 3),
             event_type=event_type,
-            frame_uri=""  # Will be filled by use case
+            frame_uri=""  # Sẽ được điền bởi use case
         )
     
     def get_snapshot_frame(self) -> Optional[np.ndarray]:
-        """Get the last captured frame for snapshot."""
+        """Lấy khung hình cuối cùng đã chụp để làm snapshot."""
         return self._last_frame
     
     def force_end_session(self, current_time: Optional[datetime] = None) -> Optional[VisionEvent]:
         """
-        Force end current session (e.g., on application shutdown).
+        Buộc kết thúc phiên hiện tại (ví dụ: khi tắt ứng dụng).
         
         Returns:
-            VisionEvent if session was active, None otherwise
+            VisionEvent nếu phiên đang hoạt động, ngược lại là None
         """
         if self._state != PresenceState.PERSON_PRESENT:
             return None
@@ -188,7 +188,7 @@ class EventAggregator:
         now = current_time or datetime.now(timezone.utc)
         event = self._create_event(now, "person_left")
         
-        # Reset state
+        # Đặt lại trạng thái
         self._state = PresenceState.IDLE
         self._window_start = None
         self._session_start = None

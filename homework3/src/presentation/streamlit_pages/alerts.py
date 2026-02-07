@@ -1,4 +1,4 @@
-"""Real-time Alerts Page - RabbitMQ consumer with live alerts feed."""
+"""Trang Cảnh báo Thời gian thực - RabbitMQ consumer với luồng cảnh báo trực tiếp."""
 import streamlit as st
 import pandas as pd
 import json
@@ -10,37 +10,37 @@ logger = logging.getLogger(__name__)
 
 
 def render_alerts(rabbitmq_pub):
-    """Render the real-time alerts page."""
+    """Hiển thị trang cảnh báo thời gian thực."""
     
-    st.header("🔔 Real-time Alerts")
-    st.markdown("View alerts from RabbitMQ queues")
+    st.header("🔔 Cảnh báo Thời gian thực")
+    st.markdown("Xem cảnh báo từ hàng đợi RabbitMQ")
     
-    # Connection status
+    # Trạng thái kết nối
     is_connected = rabbitmq_pub and rabbitmq_pub.is_connected
     
     status_col, action_col = st.columns([3, 1])
     
     with status_col:
         if is_connected:
-            st.success(f"🟢 Connected to RabbitMQ | Exchange: `{rabbitmq_pub.exchange}`")
+            st.success(f"🟢 Đã kết nối với RabbitMQ | Exchange: `{rabbitmq_pub.exchange}`")
         else:
-            st.error("🔴 RabbitMQ is not connected")
-            st.info("Make sure RabbitMQ is running at `localhost:5672`")
+            st.error("🔴 RabbitMQ chưa kết nối")
+            st.info("Đảm bảo RabbitMQ đang chạy tại `localhost:5672`")
             return
     
     with action_col:
-        if st.button("🔄 Refresh"):
+        if st.button("🔄 Làm mới"):
             st.rerun()
     
     st.divider()
     
-    # Alert queues info
-    st.subheader("📬 Alert Queues")
+    # Thông tin hàng đợi cảnh báo
+    st.subheader("📬 Hàng đợi Cảnh báo")
     
     queues = [
-        {"name": "q_person_present", "routing_key": "person.present", "description": "Person detected in zone"},
-        {"name": "q_person_still_present", "routing_key": "person.still_present", "description": "Person still in zone (heartbeat)"},
-        {"name": "q_person_left", "routing_key": "person.left", "description": "Person left the zone"},
+        {"name": "q_person_present", "routing_key": "person.present", "description": "Phát hiện người trong vùng cấm"},
+        {"name": "q_person_still_present", "routing_key": "person.still_present", "description": "Người vẫn ở trong vùng cấm (heartbeat)"},
+        {"name": "q_person_left", "routing_key": "person.left", "description": "Người đã rời khỏi vùng cấm"},
     ]
     
     queue_cols = st.columns(3)
@@ -65,57 +65,55 @@ def render_alerts(rabbitmq_pub):
     
     st.divider()
     
-    # Alert consumption logic
-    st.subheader("📨 Alert Management")
+    # Logic tiêu thụ cảnh báo
+    st.subheader("📨 Quản lý Cảnh báo")
     
-    # Simulate alert history (stored in session state)
+    # Mô phỏng lịch sử cảnh báo (lưu trong session state)
     if "alert_history" not in st.session_state:
         st.session_state.alert_history = []
     
-    # Fetch real alerts from RabbitMQ
+    # Lấy cảnh báo thực từ RabbitMQ
     new_alerts_count = 0
     for queue in queues:
-        try:
-            # We use a small limit to not hang the page, but enough to get recent activity
-            payloads = rabbitmq_pub.consume_alerts(queue['name'], limit=50)
-            for p in payloads:
-                st.session_state.alert_history.append({
-                    "timestamp": datetime.fromtimestamp(p.ts / 1000),
-                    "event_type": p.event_type,
-                    "routing_key": queue['routing_key'],
-                    "status": "📥 Received (Real Data)"
-                })
-                new_alerts_count += 1
-        except Exception as e:
-            logger.error(f"Error fetching from {queue['name']}: {e}")
+        # Lấy cảnh báo từ queue
+        # Sử dụng giới hạn nhỏ để không làm treo trang, nhưng đủ để lấy hoạt động gần đây
+        payloads = rabbitmq_pub.consume_alerts(queue['name'], limit=50)
+        for p in payloads:
+            st.session_state.alert_history.append({
+                "timestamp": datetime.fromtimestamp(p.ts / 1000),
+                "event_type": p.event_type,
+                "routing_key": queue['routing_key'],
+                "status": "📥 Đã nhận (Dữ liệu thực)"
+            })
+            new_alerts_count += 1
     
     if new_alerts_count > 0:
-        st.toast(f"📥 Received {new_alerts_count} new alerts from RabbitMQ!", icon="🔔")
+        st.toast(f"📥 Đã nhận {new_alerts_count} cảnh báo mới từ RabbitMQ!", icon="🔔")
     
     st.divider()
     
-    # Alert simulator
-    st.markdown("**Test Alert Simulator:**")
+    # Trình mô phỏng cảnh báo
+    st.markdown("**Trình mô phỏng cảnh báo thử nghiệm:**")
     
     col_sim1, col_sim2, col_sim3 = st.columns(3)
     
     with col_sim1:
-        if st.button("🟢 Person Present"):
+        if st.button("🟢 Có người"):
             _publish_test_alert(rabbitmq_pub, "person_present_start", "person.present")
     
     with col_sim2:
-        if st.button("🟡 Still Present"):
+        if st.button("🟡 Vẫn còn người"):
             _publish_test_alert(rabbitmq_pub, "person_still_present", "person.still_present")
     
     with col_sim3:
-        if st.button("🔴 Person Left"):
+        if st.button("🔴 Người đã rời đi"):
             _publish_test_alert(rabbitmq_pub, "person_left", "person.left")
     
-    # Alert history
-    st.subheader("📜 Alert History")
+    # Lịch sử cảnh báo
+    st.subheader("📜 Lịch sử Cảnh báo")
     
     if st.session_state.alert_history:
-        # Convert to DataFrame
+        # Chuyển đổi sang DataFrame
         df = pd.DataFrame(st.session_state.alert_history)
         df = df.sort_values("timestamp", ascending=False)
         
@@ -123,50 +121,47 @@ def render_alerts(rabbitmq_pub):
             df,
             hide_index=True,
             column_config={
-                "timestamp": st.column_config.DatetimeColumn("Time", format="HH:mm:ss"),
-                "event_type": st.column_config.TextColumn("Event Type"),
+                "timestamp": st.column_config.DatetimeColumn("Thời gian", format="HH:mm:ss"),
+                "event_type": st.column_config.TextColumn("Loại sự kiện"),
                 "routing_key": st.column_config.TextColumn("Routing Key"),
-                "status": st.column_config.TextColumn("Status")
+                "status": st.column_config.TextColumn("Trạng thái")
             }
         )
         
-        if st.button("🗑️ Clear History"):
+        if st.button("🗑️ Xóa Lịch sử"):
             st.session_state.alert_history = []
             st.rerun()
     else:
-        st.info("No alerts in history. Try the simulator above!")
+        st.info("Chưa có cảnh báo nào trong lịch sử. Hãy thử trình mô phỏng ở trên!")
 
 
 def _publish_test_alert(rabbitmq_pub, event_type: str, routing_key: str):
-    """Publish a test alert to RabbitMQ."""
+    """Gửi một cảnh báo thử nghiệm đến RabbitMQ."""
     
     import uuid
     from src.domain.value_objects import AlertPayload
     
-    try:
-        payload = AlertPayload(
-            event_id=str(uuid.uuid4()),
-            camera_id="test_camera",
-            ts=int(datetime.now().timestamp() * 1000),
-            event_type=event_type,
-            person_count=1,
-            note="Test alert from Streamlit"
-        )
-        
-        success = rabbitmq_pub.publish_alert(payload, routing_key)
-        
-        # Add to history
-        st.session_state.alert_history.append({
-            "timestamp": datetime.now(),
-            "event_type": event_type,
-            "routing_key": routing_key,
-            "status": "✅ Published" if success else "❌ Failed"
-        })
-        
-        if success:
-            st.toast(f"✅ Published: {event_type}", icon="🔔")
-        else:
-            st.error("Failed to publish alert")
-            
-    except Exception as e:
-        st.error(f"Error: {e}")
+    # Tạo và gửi payload thử nghiệm
+    payload = AlertPayload(
+        event_id=str(uuid.uuid4()),
+        camera_id="test_camera",
+        ts=int(datetime.now().timestamp() * 1000),
+        event_type=event_type,
+        person_count=1,
+        note="Test alert from Streamlit"
+    )
+    
+    success = rabbitmq_pub.publish_alert(payload, routing_key)
+    
+    # Thêm vào lịch sử
+    st.session_state.alert_history.append({
+        "timestamp": datetime.now(),
+        "event_type": event_type,
+        "routing_key": routing_key,
+        "status": "✅ Đã gửi" if success else "❌ Thất bại"
+    })
+    
+    if success:
+        st.toast(f"✅ Đã gửi: {event_type}", icon="🔔")
+    else:
+        st.error("Gửi cảnh báo thất bại")

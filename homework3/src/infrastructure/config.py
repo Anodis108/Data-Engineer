@@ -1,4 +1,4 @@
-"""Configuration loader for vision event pipeline."""
+"""Module tải cấu hình cho pipeline sự kiện thị giác."""
 import os
 import json
 import os
@@ -15,64 +15,61 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AppConfig:
-    """Application configuration loaded from .env and config files."""
+    """Cấu hình ứng dụng được tải từ file .env và các file config."""
     
-    # MinIO settings
+    # Cài đặt MinIO
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str
     minio_bucket: str
     minio_secure: bool
     
-    # RabbitMQ settings
+    # Cài đặt RabbitMQ
     rabbit_host: str
     rabbit_port: int
     rabbit_user: str
     rabbit_pass: str
     rabbit_exchange: str
     
-    # Camera settings
+    # Cài đặt Camera
     camera_index: int
     camera_id: str
     
-    # Detection settings
+    # Cài đặt Phát hiện (Detection)
     conf_threshold: float
     infer_every_n: int
     
-    # Event aggregation settings
+    # Cài đặt Tổng hợp sự kiện
     emit_every_sec: int
     session_gap_sec: int
     
-    # Storage prefixes
+    # Các tiền tố lưu trữ (Prefixes)
     s3_prefix_snapshots: str
     s3_prefix_events: str
     s3_prefix_sessions: str
     
-    # Snapshot settings
+    # Cài đặt Snapshot
     snapshot_jpeg_quality: int
     
-    # Polygon (forbidden zone)
+    # Vùng cấm (Polygon)
     polygon: list[list[int]]
     
-    # YOLO model path
+    # Đường dẫn mô hình YOLO
     model_path: str
 
 
 def load_polygon(config_path: Optional[str] = None) -> list[list[int]]:
-    """Load polygon from JSON config file."""
+    """Tải polygon từ file cấu hình JSON."""
     if config_path is None:
         config_path = Path(__file__).parent.parent.parent / "resource" / "config" / "polygon.json"
     
-    try:
-        with open(config_path, "r") as f:
-            data = json.load(f)
-            return data.get("active_area", [])
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    with open(config_path, "r") as f:
+        data = json.load(f)
+        return data.get("active_area", [])
 
 
 def save_polygon(polygon: list[list[int]], config_path: Optional[str] = None) -> None:
-    """Save polygon to JSON config file atomically."""
+    """Lưu polygon vào file cấu hình JSON một cách nguyên tử (atomic)."""
     if config_path is None:
         config_path = Path(__file__).parent.parent.parent / "resource" / "config" / "polygon.json"
     
@@ -81,36 +78,30 @@ def save_polygon(polygon: list[list[int]], config_path: Optional[str] = None) ->
     
     logger.info(f"Saving polygon to: {config_path.absolute()}")
     
-    # Atomic write: write to temp file then rename
-    try:
-        with tempfile.NamedTemporaryFile("w", dir=config_path.parent, delete=False) as tf:
-            json.dump({"active_area": polygon}, tf)
-            temp_name = tf.name
-        
-        # Renaissance (atomic on POSIX, atomic replace on Windows with recent Python/OS)
-        # shutil.move handles cross-filesystem moves if necessary, but os.replace is atomic on same fs
-        os.replace(temp_name, config_path)
-    except Exception as e:
-        # cleanup if something failed before rename
-        if 'temp_name' in locals() and os.path.exists(temp_name):
-            os.remove(temp_name)
-        raise e
+    # Ghi nguyên tử: ghi vào file tạm sau đó đổi tên
+    with tempfile.NamedTemporaryFile("w", dir=config_path.parent, delete=False) as tf:
+        json.dump({"active_area": polygon}, tf)
+        temp_name = tf.name
+    
+    # Đổi tên (nguyên tử trên POSIX, thay thế nguyên tử trên Windows với Python/OS mới)
+    # shutil.move xử lý việc di chuyển giữa các filesystem nếu cần, nhưng os.replace là nguyên tử trên cùng fs
+    os.replace(temp_name, config_path)
 
 
 def load_config(env_path: Optional[str] = None) -> AppConfig:
     """
-    Load configuration from .env file and other config files.
+    Tải cấu hình từ file .env và các file config khác.
     
     Args:
-        env_path: Optional path to .env file. Defaults to project root.
+        env_path: Đường dẫn tùy chọn tới file .env. Mặc định là thư mục gốc của dự án.
     
     Returns:
-        AppConfig with all settings loaded.
+        AppConfig với tất cả các cài đặt đã được tải.
     """
     if env_path:
         load_dotenv(env_path)
     else:
-        # Try to load from project root
+        # Thử tải từ thư mục gốc của dự án
         project_root = Path(__file__).parent.parent.parent
         env_file = project_root / ".env"
         if env_file.exists():

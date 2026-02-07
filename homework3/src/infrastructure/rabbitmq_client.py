@@ -1,4 +1,4 @@
-"""RabbitMQ publisher for vision event alerts."""
+"""Publisher RabbitMQ cho các cảnh báo sự kiện thị giác."""
 import logging
 from typing import Optional
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class RabbitMQPublisher:
-    """Publisher for sending alerts to RabbitMQ."""
+    """Publisher để gửi cảnh báo tới RabbitMQ."""
     
     def __init__(
         self,
@@ -23,59 +23,49 @@ class RabbitMQPublisher:
         exchange: str
     ):
         """
-        Initialize RabbitMQ publisher.
+        Khởi tạo RabbitMQ publisher.
         
         Args:
             host: RabbitMQ host
             port: RabbitMQ port
-            user: Username
-            password: Password
-            exchange: Exchange name for publishing
+            user: Tên đăng nhập
+            password: Mật khẩu
+            exchange: Tên exchange để publish
         """
         self.exchange = exchange
         self._connection: Optional[pika.BlockingConnection] = None
         self._channel = None
         self._connected = False
         
-        try:
-            credentials = pika.PlainCredentials(user, password)
-            params = pika.ConnectionParameters(
-                host=host,
-                port=port,
-                credentials=credentials,
-                heartbeat=30,
-                connection_attempts=3,
-                retry_delay=1
-            )
-            
-            self._connection = pika.BlockingConnection(params)
-            self._channel = self._connection.channel()
-            
-            # Declare exchange
-            self._channel.exchange_declare(
-                exchange=exchange,
-                exchange_type="topic",
-                durable=True
-            )
-            
-            # Declare queues and bind them
-            # Declare queues and bind them
-            self._setup_queues()
-            
-            self._connected = True
-            logger.info(f"RabbitMQ connected: host={host}:{port}, exchange={exchange}")
-            
-
-            
-        except AMQPConnectionError as e:
-            logger.error(f"RabbitMQ connection failed (host={host}:{port}): {e}. Messaging disabled.")
-        except AMQPChannelError as e:
-            logger.error(f"RabbitMQ channel error: {e}. Messaging disabled.")
-        except Exception as e:
-            logger.error(f"RabbitMQ unexpected error: {e}. Messaging disabled.")
+        # Thiết lập kết nối tới RabbitMQ
+        credentials = pika.PlainCredentials(user, password)
+        params = pika.ConnectionParameters(
+            host=host,
+            port=port,
+            credentials=credentials,
+            heartbeat=30,
+            connection_attempts=3,
+            retry_delay=1
+        )
+        
+        self._connection = pika.BlockingConnection(params)
+        self._channel = self._connection.channel()
+        
+        # Khai báo exchange
+        self._channel.exchange_declare(
+            exchange=exchange,
+            exchange_type="topic",
+            durable=True
+        )
+        
+        # Khai báo queues và bind chúng
+        self._setup_queues()
+        
+        self._connected = True
+        logger.info(f"RabbitMQ connected: host={host}:{port}, exchange={exchange}")
     
     def _setup_queues(self) -> None:
-        """Setup default queues for vision alerts."""
+        """Thiết lập các queues mặc định cho cảnh báo thị giác."""
         queues = [
             ("q_person_present", "person.present"),
             ("q_person_still_present", "person.still_present"),
@@ -92,7 +82,7 @@ class RabbitMQPublisher:
     
     @property
     def is_connected(self) -> bool:
-        """Check if RabbitMQ is connected and ready."""
+        """Kiểm tra RabbitMQ đã kết nối và sẵn sàng chưa."""
         if self._connection is None or self._connection.is_closed:
             return False
         if self._channel is None or self._channel.is_closed:
@@ -101,76 +91,65 @@ class RabbitMQPublisher:
     
     def publish_alert(self, payload: AlertPayload, routing_key: str) -> bool:
         """
-        Publish alert message to RabbitMQ.
+        Gửi tin nhắn cảnh báo tới RabbitMQ.
         
         Args:
-            payload: Alert payload to publish
-            routing_key: Routing key (e.g., 'person.present', 'person.left')
+            payload: Payload cảnh báo cần gửi
+            routing_key: Routing key (ví dụ: 'person.present', 'person.left')
         
         Returns:
-            True if published successfully, False otherwise
+            True nếu gửi thành công, False nếu thất bại
         """
         if not self.is_connected:
             logger.warning("RabbitMQ not connected. Dropping alert.")
             return False
         
-        try:
-            self._channel.basic_publish(
-                exchange=self.exchange,
-                routing_key=routing_key,
-                body=payload.to_bytes(),
-                properties=pika.BasicProperties(
-                    content_type="application/json",
-                    delivery_mode=2  # Persistent
-                )
+        # Gửi tin nhắn tới exchange với routing key
+        self._channel.basic_publish(
+            exchange=self.exchange,
+            routing_key=routing_key,
+            body=payload.to_bytes(),
+            properties=pika.BasicProperties(
+                content_type="application/json",
+                delivery_mode=2  # Persistent (bền vững)
             )
-            
-            logger.debug(f"Published alert: {routing_key} -> {payload.event_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to publish alert: {e}")
-            return False
+        )
+        
+        logger.debug(f"Published alert: {routing_key} -> {payload.event_id}")
+        return True
     
     def consume_alerts(self, queue_name: str, limit: int = 10) -> list[AlertPayload]:
         """
-        Pull (consume) messages from a queue without blocking.
+        Lấy (consume) tin nhắn từ queue mà không blocking.
         
         Args:
-            queue_name: Name of the queue to pull from
-            limit: Maximum number of messages to pull
+            queue_name: Tên queue để lấy tin nhắn
+            limit: Số lượng tối đa tin nhắn cần lấy
             
         Returns:
-            List of AlertPayload objects
+            Danh sách các đối tượng AlertPayload
         """
         if not self.is_connected:
             return []
             
         alerts = []
-        try:
-            for _ in range(limit):
-                method_frame, header_frame, body = self._channel.basic_get(queue=queue_name, auto_ack=True)
-                if method_frame:
-                    try:
-                        payload = AlertPayload.from_json(body.decode("utf-8"))
-                        alerts.append(payload)
-                    except Exception as e:
-                        logger.error(f"Failed to parse alert payload: {e}")
-                else:
-                    # No more messages in this queue
-                    break
-        except Exception as e:
-            logger.error(f"Error consuming from {queue_name}: {e}")
+        # Lấy tin nhắn từ queue (không blocking)
+        for _ in range(limit):
+            method_frame, header_frame, body = self._channel.basic_get(queue=queue_name, auto_ack=True)
+            if method_frame:
+                payload = AlertPayload.from_json(body.decode("utf-8"))
+                alerts.append(payload)
+            else:
+                # Không còn tin nhắn trong queue này
+                break
             
         return alerts
 
     def close(self) -> None:
-        """Close RabbitMQ connection."""
+        """Đóng kết nối RabbitMQ."""
         if self._connection and not self._connection.is_closed:
-            try:
-                self._connection.close()
-                logger.info("RabbitMQ connection closed")
-            except Exception as e:
-                logger.warning(f"Error closing RabbitMQ: {e}")
+            # Đóng kết nối để giải phóng tài nguyên
+            self._connection.close()
+            logger.info("RabbitMQ connection closed")
         
         self._connected = False

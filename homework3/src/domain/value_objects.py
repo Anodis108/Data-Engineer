@@ -1,4 +1,4 @@
-"""Value objects for vision event pipeline - immutable data structures."""
+"""Các value objects cho pipeline sự kiện thị giác - cấu trúc dữ liệu bất biến (immutable)."""
 from dataclasses import dataclass
 import json
 
@@ -6,22 +6,22 @@ import json
 @dataclass(frozen=True)
 class AlertPayload:
     """
-    Immutable payload for RabbitMQ alert messages.
+    Payload bất biến cho các tin nhắn cảnh báo RabbitMQ.
     
-    Event types:
-    - person.present: Person detected in forbidden zone
-    - person.still_present: Person still in zone (heartbeat)
-    - person.left: Person left the zone
+    Các loại sự kiện (Event types):
+    - person.present: Người được phát hiện trong vùng cấm.
+    - person.still_present: Người vẫn đang ở trong vùng (heartbeat).
+    - person.left: Người đã rời khỏi vùng.
     """
     event_id: str
     camera_id: str
-    ts: int  # Unix timestamp in milliseconds
+    ts: int  # Unix timestamp tính bằng milliseconds
     event_type: str
     person_count: int
     note: str = ""
     
     def to_json(self) -> str:
-        """Serialize to JSON string."""
+        """Serialize sang chuỗi JSON."""
         return json.dumps({
             "event_id": self.event_id,
             "camera_id": self.camera_id,
@@ -32,12 +32,12 @@ class AlertPayload:
         })
     
     def to_bytes(self) -> bytes:
-        """Serialize to bytes for messaging."""
+        """Serialize sang bytes để gửi tin nhắn."""
         return self.to_json().encode("utf-8")
 
     @staticmethod
     def from_json(json_str: str) -> 'AlertPayload':
-        """Deserialize from JSON string."""
+        """Deserialize từ chuỗi JSON."""
         data = json.loads(json_str)
         return AlertPayload(
             event_id=data["event_id"],

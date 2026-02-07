@@ -1,4 +1,4 @@
-"""Domain entities for vision event pipeline."""
+"""Các thực thể (Entities) của domain cho luồng xử lý sự kiện thị giác máy tính."""
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -7,14 +7,14 @@ import uuid
 
 @dataclass
 class Detection:
-    """Represents a single person detection from YOLO."""
+    """Đại diện cho một phát hiện người từ mô hình YOLO."""
     bbox: tuple[int, int, int, int]  # x1, y1, x2, y2
     confidence: float
     is_inside_zone: bool
     
     @property
     def center(self) -> tuple[float, float]:
-        """Get center point of bounding box."""
+        """Lấy điểm trung tâm của bounding box."""
         x1, y1, x2, y2 = self.bbox
         return ((x1 + x2) / 2, (y1 + y2) / 2)
 
@@ -22,12 +22,12 @@ class Detection:
 @dataclass
 class VisionEvent:
     """
-    Represents an aggregated vision event over a time window.
+    Đại diện cho một sự kiện thị giác được tổng hợp qua một cửa sổ thời gian.
     
-    Event types:
-    - person_present_start: First detection of person in zone
-    - person_still_present: Heartbeat every N seconds while person present
-    - person_left: Person left the zone after gap_sec of no detection
+    Các loại sự kiện (Event types):
+    - person_present_start: Phát hiện người đầu tiên trong vùng cấm.
+    - person_still_present: Heartbeat mỗi N giây khi người vẫn còn trong vùng.
+    - person_left: Người đã rời khỏi vùng sau khoảng thời gian gap_sec không phát hiện.
     """
     event_id: str
     camera_id: str
@@ -51,7 +51,7 @@ class VisionEvent:
         event_type: str,
         frame_uri: str = ""
     ) -> "VisionEvent":
-        """Factory method to create a new VisionEvent with auto-generated ID."""
+        """Phương thức Factory để tạo một VisionEvent mới với ID tự động sinh."""
         return cls(
             event_id=str(uuid.uuid4()),
             camera_id=camera_id,
@@ -65,7 +65,7 @@ class VisionEvent:
         )
     
     def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
+        """Chuyển đổi sang dictionary để serialization."""
         return {
             "event_id": self.event_id,
             "camera_id": self.camera_id,

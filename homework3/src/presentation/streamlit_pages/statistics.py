@@ -1,4 +1,4 @@
-"""Statistics Dashboard Page - Analytics with Trino queries and charts."""
+"""Trang Bảng điều khiển Thống kê - Phân tích với các truy vấn Trino và biểu đồ."""
 import streamlit as st
 import pandas as pd
 import logging
@@ -8,57 +8,57 @@ logger = logging.getLogger(__name__)
 
 
 def render_statistics(trino_client, minio_repo):
-    """Render the statistics dashboard page."""
+    """Hiển thị trang bảng điều khiển thống kê."""
     
-    st.header("📈 Statistics Dashboard")
-    st.markdown("Analytics and insights from your vision events data")
+    st.header("📈 Bảng Thống kê")
+    st.markdown("Phân tích và thông tin chi tiết từ dữ liệu sự kiện thị giác")
     
-    # Check connections
+    # Kiểm tra kết nối
     trino_connected = trino_client and trino_client.is_connected
     minio_connected = minio_repo and minio_repo.is_connected
     
-    # Status row
+    # Hàng trạng thái
     status_cols = st.columns(4)
     with status_cols[0]:
-        st.metric("Trino", "🟢 Connected" if trino_connected else "🔴 Offline")
+        st.metric("Trino", "🟢 Đã kết nối" if trino_connected else "🔴 Ngoại tuyến")
     with status_cols[1]:
-        st.metric("MinIO", "🟢 Connected" if minio_connected else "🔴 Offline")
+        st.metric("MinIO", "🟢 Đã kết nối" if minio_connected else "🔴 Ngoại tuyến")
     
     st.divider()
     
-    # Tab-based layout
+    # Layout dựa trên Tab
     tab_overview, tab_events, tab_query = st.tabs([
-        "📊 Overview", "📅 Event Timeline", "🔍 Custom Query"
+        "📊 Tổng quan", "📅 Dòng thời gian Sự kiện", "🔍 Truy vấn Tùy chỉnh"
     ])
     
-    # === Tab 1: Overview ===
+    # === Tab 1: Tổng quan ===
     with tab_overview:
         _render_overview(trino_client, minio_repo, trino_connected, minio_connected)
     
-    # === Tab 2: Event Timeline ===
+    # === Tab 2: Dòng thời gian Sự kiện ===
     with tab_events:
         _render_event_timeline(trino_client, trino_connected)
     
-    # === Tab 3: Custom Query ===
+    # === Tab 3: Truy vấn Tùy chỉnh ===
     with tab_query:
         _render_custom_query(trino_client, trino_connected)
 
 
 def _render_overview(trino_client, minio_repo, trino_connected, minio_connected):
-    """Render overview statistics."""
+    """Hiển thị thống kê tổng quan."""
     
-    st.subheader("📊 System Overview")
+    st.subheader("📊 Tổng quan Hệ thống")
     
-    # Storage stats from MinIO
+    # Thống kê lưu trữ từ MinIO
     if minio_connected:
-        st.markdown("### 💾 Storage Statistics")
+        st.markdown("### 💾 Thống kê Lưu trữ")
         
         buckets = minio_repo.list_buckets()
         bucket_cols = st.columns(len(buckets) if buckets else 1)
         
-        for i, bucket in enumerate(buckets[:4]):  # Limit to 4 buckets
+        for i, bucket in enumerate(buckets[:4]):  # Giới hạn 4 buckets
             with bucket_cols[i]:
-                with st.spinner(f"Loading {bucket}..."):
+                with st.spinner(f"Đang tải {bucket}..."):
                     stats = minio_repo.get_bucket_stats(bucket)
                     
                     st.metric(
@@ -67,15 +67,15 @@ def _render_overview(trino_client, minio_repo, trino_connected, minio_connected)
                         delta=f"{stats.get('total_size_mb', 0)} MB"
                     )
     
-    # Event stats from Trino
+    # Thống kê sự kiện từ Trino
     if trino_connected:
-        st.markdown("### 📊 Event Statistics")
+        st.markdown("### 📊 Thống kê Sự kiện")
         
-        with st.spinner("Loading event statistics..."):
+        with st.spinner("Đang tải thống kê sự kiện..."):
             stats_df = trino_client.get_event_statistics()
             
             if stats_df is not None and not stats_df.empty:
-                # Summary metrics
+                # Các chỉ số tóm tắt
                 metric_cols = st.columns(4)
                 
                 total_events = stats_df["event_count"].sum()
@@ -84,70 +84,70 @@ def _render_overview(trino_client, minio_repo, trino_connected, minio_connected)
                 cameras = stats_df["camera_id"].nunique()
                 
                 with metric_cols[0]:
-                    st.metric("Total Events", int(total_events))
+                    st.metric("Tổng Sự kiện", int(total_events))
                 with metric_cols[1]:
-                    st.metric("Avg Persons/Event", f"{avg_persons:.1f}")
+                    st.metric("Số người TB/Sự kiện", f"{avg_persons:.1f}")
                 with metric_cols[2]:
-                    st.metric("Avg Confidence", f"{avg_conf:.2%}")
+                    st.metric("Độ tin cậy TB", f"{avg_conf:.2%}")
                 with metric_cols[3]:
-                    st.metric("Active Cameras", cameras)
+                    st.metric("Camera Hoạt động", cameras)
                 
-                # Event type distribution
-                st.markdown("#### Event Type Distribution")
+                # Phân bố loại sự kiện
+                st.markdown("#### Phân bố Loại Sự kiện")
                 
                 event_type_df = stats_df.groupby("event_type")["event_count"].sum().reset_index()
                 
-                # Bar chart
+                # Biểu đồ cột
                 st.bar_chart(
                     event_type_df.set_index("event_type")
                 )
                 
-                # Detailed table
+                # Bảng chi tiết
                 st.dataframe(stats_df, hide_index=True)
             else:
-                st.info("No event data available. Start detection to generate events.")
+                st.info("Không có dữ liệu sự kiện. Hãy bắt đầu phát hiện để tạo sự kiện.")
     else:
-        st.warning("Trino is not connected. Event statistics unavailable.")
+        st.warning("Trino chưa kết nối. Thống kê sự kiện không khả dụng.")
 
 
 def _render_event_timeline(trino_client, trino_connected):
-    """Render event timeline chart."""
+    """Hiển thị biểu đồ dòng thời gian sự kiện."""
     
-    st.subheader("📅 Event Timeline")
+    st.subheader("📅 Dòng thời gian Sự kiện")
     
     if not trino_connected:
-        st.warning("Trino is not connected")
+        st.warning("Trino chưa kết nối")
         return
     
-    # Filters
+    # Bộ lọc
     col_filters = st.columns(3)
     
     with col_filters[0]:
-        camera_filter = st.text_input("Camera ID (optional)", "")
+        camera_filter = st.text_input("Camera ID (tùy chọn)", "")
     
     with col_filters[1]:
         time_range = st.selectbox(
-            "Time Range",
-            ["Last 24 Hours", "Last 7 Days", "Last 30 Days", "All Time"],
+            "Khoảng Thời gian",
+            ["24 Giờ qua", "7 Ngày qua", "30 Ngày qua", "Tất cả"],
             index=0
         )
     
     with col_filters[2]:
-        if st.button("🔄 Refresh"):
+        if st.button("🔄 Làm mới"):
             st.rerun()
     
-    # Get data
-    with st.spinner("Loading timeline data..."):
+    # Lấy dữ liệu
+    with st.spinner("Đang tải dữ liệu dòng thời gian..."):
         events_df = trino_client.get_events_by_hour(
             camera_id=camera_filter if camera_filter else None
         )
         
         if events_df is not None and not events_df.empty:
-            # Convert hour column to datetime if needed
+            # Chuyển đổi cột giờ sang datetime nếu cần
             if "hour" in events_df.columns:
                 events_df["hour"] = pd.to_datetime(events_df["hour"])
             
-            # Pivot for stacked chart
+            # Pivot cho biểu đồ xếp chồng
             pivot_df = events_df.pivot_table(
                 index="hour",
                 columns="event_type",
@@ -156,22 +156,22 @@ def _render_event_timeline(trino_client, trino_connected):
                 fill_value=0
             )
             
-            # Line chart
+            # Biểu đồ đường
             st.line_chart(pivot_df)
             
-            # Summary
-            st.markdown("#### Recent Events Summary")
+            # Tóm tắt
+            st.markdown("#### Tóm tắt Sự kiện Gần đây")
             st.dataframe(
                 events_df.head(50),
                 hide_index=True
             )
         else:
-            st.info("No timeline data available")
+            st.info("Không có dữ liệu dòng thời gian")
     
-    # Recent events table
-    st.markdown("### 📋 Recent Events")
+    # Bảng sự kiện gần đây
+    st.markdown("### 📋 Sự kiện Gần đây")
     
-    with st.spinner("Loading recent events..."):
+    with st.spinner("Đang tải sự kiện gần đây..."):
         recent_df = trino_client.get_recent_events(limit=20)
         
         if recent_df is not None and not recent_df.empty:
@@ -183,35 +183,35 @@ def _render_event_timeline(trino_client, trino_connected):
                 }
             )
         else:
-            st.info("No recent events found")
+            st.info("Không tìm thấy sự kiện nào")
 
 
 def _render_custom_query(trino_client, trino_connected):
-    """Render custom SQL query interface."""
+    """Hiển thị giao diện truy vấn SQL tùy chỉnh."""
     
-    st.subheader("🔍 Custom SQL Query")
+    st.subheader("🔍 Truy vấn SQL Tùy chỉnh")
     
     if not trino_connected:
-        st.warning("Trino is not connected")
+        st.warning("Trino chưa kết nối")
         return
     
-    # Example queries
-    st.markdown("**Example Queries:**")
+    # Các truy vấn mẫu
+    st.markdown("**Các truy vấn mẫu:**")
     
     examples = {
-        "Show schemas": "SHOW SCHEMAS FROM hive",
-        "Show tables": "SHOW TABLES FROM raw",
-        "Event count by camera": """
+        "Hiển thị schemas": "SHOW SCHEMAS FROM hive",
+        "Hiển thị bảng": "SHOW TABLES FROM raw",
+        "Số lượng sự kiện theo camera": """
 SELECT camera_id, COUNT(*) as event_count 
 FROM raw.vision_events 
 GROUP BY camera_id
 """,
-        "Average confidence by event type": """
+        "Độ tin cậy trung bình theo loại sự kiện": """
 SELECT event_type, AVG(conf_avg) as avg_confidence, COUNT(*) as count
 FROM raw.vision_events
 GROUP BY event_type
 """,
-        "Recent events": """
+        "Sự kiện gần đây": """
 SELECT event_id, camera_id, event_type, person_count, ts_start
 FROM raw.vision_events
 ORDER BY ts_start DESC
@@ -220,48 +220,45 @@ LIMIT 10
     }
     
     selected_example = st.selectbox(
-        "Load example query",
-        ["-- Select --"] + list(examples.keys())
+        "Tải truy vấn mẫu",
+        ["-- Chọn --"] + list(examples.keys())
     )
     
     default_query = examples.get(selected_example, "")
     
-    # Query editor
+    # Trình chỉnh sửa truy vấn
     query = st.text_area(
-        "SQL Query",
+        "Truy vấn SQL",
         value=default_query,
         height=150,
-        placeholder="Enter your Trino SQL query here..."
+        placeholder="Nhập truy vấn Trino SQL của bạn ở đây..."
     )
     
     col_run, col_info = st.columns([1, 3])
     
     with col_run:
-        run_query = st.button("▶️ Run Query", type="primary")
+        run_query = st.button("▶️ Chạy Truy vấn", type="primary")
     
     with col_info:
-        st.caption("Queries execute against Trino hive catalog")
+        st.caption("Các truy vấn được thực thi trên catalog Trino hive")
     
-    # Execute query
+    # Thực thi truy vấn
     if run_query and query.strip():
-        with st.spinner("Executing query..."):
-            try:
-                result = trino_client.execute_query(query)
+        with st.spinner("Đang thực thi truy vấn..."):
+            # Thực thi truy vấn với Trino
+            result = trino_client.execute_query(query)
+            
+            if result is not None:
+                st.success(f"✅ Truy vấn trả về {len(result)} hàng")
+                st.dataframe(result, hide_index=True)
                 
-                if result is not None:
-                    st.success(f"✅ Query returned {len(result)} rows")
-                    st.dataframe(result, hide_index=True)
-                    
-                    # Download button
-                    csv = result.to_csv(index=False)
-                    st.download_button(
-                        "⬇️ Download CSV",
-                        csv,
-                        "query_result.csv",
-                        "text/csv"
-                    )
-                else:
-                    st.warning("Query returned no results")
-                    
-            except Exception as e:
-                st.error(f"Query error: {e}")
+                # Nút tải xuống
+                csv = result.to_csv(index=False)
+                st.download_button(
+                    "⬇️ Tải xuống CSV",
+                    csv,
+                    "query_result.csv",
+                    "text/csv"
+                )
+            else:
+                st.warning("Truy vấn không trả về kết quả nào")

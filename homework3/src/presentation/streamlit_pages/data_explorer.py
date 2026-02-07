@@ -1,4 +1,4 @@
-"""Data Explorer Page - Browse MinIO buckets and preview files."""
+"""Trang Data Explorer - Duyệt MinIO buckets và xem trước tệp tin."""
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -8,62 +8,62 @@ logger = logging.getLogger(__name__)
 
 
 def render_data_explorer(minio_repo):
-    """Render the data lake explorer page."""
+    """Hiển thị trang data lake explorer."""
     
     st.header("📁 Data Lake Explorer")
-    st.markdown("Browse MinIO buckets, view stored events and snapshots")
+    st.markdown("Duyệt các bucket MinIO, xem các sự kiện và snapshot đã lưu trữ")
     
     if not minio_repo or not minio_repo.is_connected:
-        st.error("❌ MinIO is not connected. Please check your configuration.")
-        st.info("Make sure MinIO is running at `localhost:9000`")
+        st.error("❌ MinIO chưa kết nối. Vui lòng kiểm tra cấu hình.")
+        st.info("Đảm bảo MinIO đang chạy tại `localhost:9000`")
         return
     
-    # Get available buckets
+    # Lấy danh sách buckets
     buckets = minio_repo.list_buckets()
     
     if not buckets:
-        st.warning("No buckets found in MinIO")
+        st.warning("Không tìm thấy bucket nào trong MinIO")
         return
     
-    # Sidebar for bucket selection
+    # Sidebar để chọn bucket
     col_nav, col_content = st.columns([1, 3])
     
     with col_nav:
-        st.subheader("🗂️ Navigation")
+        st.subheader("🗂️ Điều hướng")
         
-        # Bucket selector
+        # Chọn bucket
         selected_bucket = st.selectbox(
-            "Select Bucket",
+            "Chọn Bucket",
             buckets,
             index=0 if "lake" not in buckets else buckets.index("lake")
         )
         
-        # Get bucket stats
-        if st.button("📊 Refresh Stats"):
-            with st.spinner("Calculating..."):
+        # Lấy thống kê bucket
+        if st.button("📊 Làm mới Thống kê"):
+            with st.spinner("Đang tính toán..."):
                 stats = minio_repo.get_bucket_stats(selected_bucket)
                 st.session_state[f"bucket_stats_{selected_bucket}"] = stats
         
-        # Display stats if available
+        # Hiển thị thống kê nếu có
         stats_key = f"bucket_stats_{selected_bucket}"
         if stats_key in st.session_state:
             stats = st.session_state[stats_key]
-            st.metric("Objects", stats.get("object_count", 0))
-            st.metric("Size (MB)", stats.get("total_size_mb", 0))
+            st.metric("Đối tượng", stats.get("object_count", 0))
+            st.metric("Kích thước (MB)", stats.get("total_size_mb", 0))
         
         st.divider()
         
-        # Path input
+        # Nhập đường dẫn
         current_path = st.text_input(
-            "Path Prefix",
+            "Tiền tố đường dẫn",
             value="",
-            placeholder="e.g., raw/events/"
+            placeholder="ví dụ: raw/events/"
         )
     
     with col_content:
         st.subheader(f"📂 {selected_bucket}{('/' + current_path) if current_path else ''}")
         
-        # List objects
+        # Liệt kê đối tượng
         objects = minio_repo.list_objects(
             prefix=current_path,
             bucket=selected_bucket,
@@ -71,16 +71,16 @@ def render_data_explorer(minio_repo):
         )
         
         if not objects:
-            st.info("📭 No objects found in this location")
+            st.info("📭 Không tìm thấy đối tượng nào ở vị trí này")
             return
         
-        # Separate folders and files
+        # Tách thư mục và tệp tin
         folders = [o for o in objects if o.get("is_dir")]
         files = [o for o in objects if not o.get("is_dir")]
         
-        # Display folders first
+        # Hiển thị thư mục trước
         if folders:
-            st.markdown("**📁 Folders**")
+            st.markdown("**📁 Thư mục**")
             folder_cols = st.columns(4)
             for i, folder in enumerate(folders):
                 with folder_cols[i % 4]:
@@ -89,11 +89,11 @@ def render_data_explorer(minio_repo):
                         st.session_state["explorer_path"] = folder["name"]
                         st.rerun()
         
-        # Display files
+        # Hiển thị tệp tin
         if files:
-            st.markdown("**📄 Files**")
+            st.markdown("**📄 Tệp tin**")
             
-            # Create dataframe for files
+            # Tạo dataframe cho tệp tin
             file_data = []
             for f in files:
                 name = f["name"].split("/")[-1]
@@ -103,106 +103,102 @@ def render_data_explorer(minio_repo):
                     modified = modified.strftime("%Y-%m-%d %H:%M") if hasattr(modified, 'strftime') else str(modified)
                 
                 file_data.append({
-                    "Name": name,
-                    "Size (KB)": round(size_kb, 2),
-                    "Modified": modified,
-                    "Full Path": f["name"]
+                    "Tên": name,
+                    "Kích thước (KB)": round(size_kb, 2),
+                    "Đã sửa đổi": modified,
+                    "Đường dẫn đầy đủ": f["name"]
                 })
             
             df = pd.DataFrame(file_data)
             
-            # File selection
+            # Chọn tệp tin
             selected_file = st.selectbox(
-                "Select file to preview",
-                options=df["Full Path"].tolist(),
+                "Chọn tệp tin để xem trước",
+                options=df["Đường dẫn đầy đủ"].tolist(),
                 format_func=lambda x: x.split("/")[-1]
             )
             
-            # Display file table
+            # Hiển thị bảng tệp tin
             st.dataframe(
-                df[["Name", "Size (KB)", "Modified"]],
+                df[["Tên", "Kích thước (KB)", "Đã sửa đổi"]],
                 hide_index=True
             )
             
-            # Preview section
+            # Phần xem trước
             if selected_file:
                 st.divider()
                 _preview_file(minio_repo, selected_bucket, selected_file)
 
 
 def _preview_file(minio_repo, bucket, object_name):
-    """Preview a file based on its type."""
+    """Xem trước tệp tin dựa trên loại của nó."""
     
     file_name = object_name.split("/")[-1].lower()
     
     col_info, col_action = st.columns([3, 1])
     
     with col_info:
-        st.markdown(f"**Preview:** `{object_name}`")
+        st.markdown(f"**Xem trước:** `{object_name}`")
     
     with col_action:
-        # Generate download link
+        # Tạo liên kết tải xuống
         url = minio_repo.get_object_url(object_name, bucket)
         if url:
-            st.link_button("⬇️ Download", url)
+            st.link_button("⬇️ Tải xuống", url)
     
-    # Preview based on file type
+    # Xem trước dựa trên loại tệp tin
     if file_name.endswith(".parquet"):
-        with st.spinner("Loading Parquet file..."):
+        with st.spinner("Đang tải tệp Parquet..."):
             df = minio_repo.preview_parquet(object_name, bucket)
             if df is not None:
-                st.success(f"✅ Loaded {len(df)} rows")
+                st.success(f"✅ Đã tải {len(df)} hàng")
                 
-                # Show schema
+                # Hiển thị schema
                 with st.expander("📋 Schema"):
                     schema_df = pd.DataFrame({
-                        "Column": df.columns,
-                        "Type": [str(df[col].dtype) for col in df.columns]
+                        "Cột": df.columns,
+                        "Loại": [str(df[col].dtype) for col in df.columns]
                     })
                     st.dataframe(schema_df, hide_index=True)
                 
-                # Show data
+                # Hiển thị dữ liệu
                 st.dataframe(df, hide_index=True)
             else:
-                st.error("Failed to load Parquet file")
+                st.error("Không thể tải tệp Parquet")
     
     elif file_name.endswith((".jpg", ".jpeg", ".png", ".gif")):
-        with st.spinner("Loading image..."):
+        with st.spinner("Đang tải ảnh..."):
             content = minio_repo.get_object_content(object_name, bucket)
             if content:
                 st.image(content, caption=file_name, use_column_width=True)
             else:
-                st.error("Failed to load image")
+                st.error("Không thể tải ảnh")
     
     elif file_name.endswith(".json"):
-        with st.spinner("Loading JSON..."):
+        with st.spinner("Đang tải JSON..."):
             content = minio_repo.get_object_content(object_name, bucket)
             if content:
                 import json
-                try:
-                    data = json.loads(content.decode("utf-8"))
-                    st.json(data)
-                except json.JSONDecodeError:
-                    st.code(content.decode("utf-8"), language="json")
+                # Phân tích và hiển thị JSON
+                data = json.loads(content.decode("utf-8"))
+                st.json(data)
             else:
-                st.error("Failed to load JSON")
+                st.error("Không thể tải JSON")
     
     elif file_name.endswith((".txt", ".log", ".csv")):
-        with st.spinner("Loading text file..."):
+        with st.spinner("Đang tải văn bản..."):
             content = minio_repo.get_object_content(object_name, bucket)
             if content:
                 text = content.decode("utf-8", errors="replace")
                 if file_name.endswith(".csv"):
-                    try:
-                        import io
-                        df = pd.read_csv(io.StringIO(text))
-                        st.dataframe(df)
-                    except Exception:
-                        st.code(text[:5000])
+                    # Phân tích và hiển thị CSV
+                    import io
+                    df = pd.read_csv(io.StringIO(text))
+                    st.dataframe(df)
                 else:
                     st.code(text[:5000])
             else:
-                st.error("Failed to load file")
+                st.error("Không thể tải tệp tin")
     
     else:
-        st.info(f"Preview not available for this file type. Use download button.")
+        st.info(f"Xem trước không khả dụng cho loại tệp tin này. Sử dụng nút tải xuống.")

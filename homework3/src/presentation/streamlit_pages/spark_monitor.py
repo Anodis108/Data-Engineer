@@ -1,4 +1,4 @@
-"""Streamlit page for Apache Spark cluster monitoring."""
+"""Trang Streamlit để giám sát cụm Apache Spark."""
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -8,7 +8,7 @@ from src.infrastructure.spark_client import SparkClient
 
 
 def format_duration(ms: int) -> str:
-    """Format milliseconds to human readable duration."""
+    """Định dạng mili giây thành thời lượng dễ đọc."""
     if ms < 1000:
         return f"{ms}ms"
     elif ms < 60000:
@@ -20,7 +20,7 @@ def format_duration(ms: int) -> str:
 
 
 def format_memory(mb: int) -> str:
-    """Format memory in MB to human readable."""
+    """Định dạng bộ nhớ MB thành chuỗi dễ đọc."""
     if mb < 1024:
         return f"{mb} MB"
     else:
@@ -29,19 +29,19 @@ def format_memory(mb: int) -> str:
 
 def render_spark_monitor(spark_client: Optional[SparkClient]):
     """
-    Render Spark monitoring dashboard page.
+    Hiển thị trang giám sát Spark.
     
     Args:
-        spark_client: SparkClient instance for API calls
+        spark_client: SparkClient instance để gọi API
     """
-    st.header("🔥 Apache Spark Monitor")
-    st.markdown("Real-time monitoring of Spark cluster and applications")
+    st.header("🔥 Giám sát Apache Spark")
+    st.markdown("Giám sát thời gian thực cụm Spark và các ứng dụng")
     
-    # Connection status check
+    # Kiểm tra trạng thái kết nối
     if not spark_client:
-        st.error("❌ Spark client not initialized")
+        st.error("❌ Spark client chưa được khởi tạo")
         st.info("""
-        **To start Spark cluster:**
+        **Để khởi động cụm Spark:**
         ```bash
         cd mini_datalake_cdc_dvc
         docker compose up -d spark-master spark-worker
@@ -49,45 +49,45 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
         """)
         return
     
-    # Refresh connection
-    if st.button("🔄 Refresh Connection"):
+    # Làm mới kết nối
+    if st.button("🔄 Làm mới Kết nối"):
         spark_client.refresh_connection()
         st.rerun()
     
     if not spark_client.is_connected:
-        st.error("❌ Cannot connect to Spark Master")
-        st.warning(f"Tried connecting to: `{spark_client.config.master_url}`")
+        st.error("❌ Không thể kết nối với Spark Master")
+        st.warning(f"Đã thử kết nối tới: `{spark_client.config.master_url}`")
         
-        with st.expander("🔧 Troubleshooting"):
+        with st.expander("🔧 Khắc phục sự cố"):
             st.markdown("""
-            1. **Check if Spark is running:**
+            1. **Kiểm tra xem Spark có đang chạy không:**
                ```bash
                docker ps | grep spark
                ```
             
-            2. **Start Spark cluster:**
+            2. **Khởi động cụm Spark:**
                ```bash
                cd mini_datalake_cdc_dvc
                docker compose up -d spark-master spark-worker
                ```
             
-            3. **Check Spark Master logs:**
+            3. **Kiểm tra logs của Spark Master:**
                ```bash
                docker logs spark-master
                ```
             
-            4. **Verify port mapping:**
+            4. **Xác minh ánh xạ cổng:**
                - Master UI: http://localhost:8090
                - Master RPC: spark://localhost:7077
             """)
         return
     
-    st.success("✅ Connected to Spark Master")
+    st.success("✅ Đã kết nối với Spark Master")
     
     # ============================================
-    # Cluster Overview
+    # Tổng quan Cụm
     # ============================================
-    st.subheader("📊 Cluster Overview")
+    st.subheader("📊 Tổng quan Cụm")
     
     cluster_info = spark_client.get_cluster_info()
     
@@ -96,16 +96,16 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
         
         with col1:
             st.metric(
-                "Status",
-                cluster_info.get("status", "UNKNOWN"),
-                help="Cluster status"
+                "Trạng thái",
+                cluster_info.get("status", "KHÔNG XÁC ĐỊNH"),
+                help="Trạng thái cụm"
             )
         
         with col2:
             st.metric(
                 "Workers",
                 cluster_info.get("workers_alive", 0),
-                help="Number of alive workers"
+                help="Số lượng worker đang hoạt động"
             )
         
         with col3:
@@ -114,24 +114,24 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
             st.metric(
                 "Cores",
                 f"{cores_used} / {cores_total}",
-                help="Cores in use / total"
+                help="Cores đang dùng / tổng lý"
             )
         
         with col4:
             mem_used = cluster_info.get("memory_used_mb", 0)
             mem_total = cluster_info.get("memory_total_mb", 0)
             st.metric(
-                "Memory",
+                "Bộ nhớ",
                 f"{format_memory(mem_used)} / {format_memory(mem_total)}",
-                help="Memory used / total"
+                help="Bộ nhớ đang dùng / tổng số"
             )
         
-        # Apps summary
+        # Tóm tắt ứng dụng
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Active Applications", cluster_info.get("active_apps", 0))
+            st.metric("Ứng dụng Đang chạy", cluster_info.get("active_apps", 0))
         with col2:
-            st.metric("Completed Applications", cluster_info.get("completed_apps", 0))
+            st.metric("Ứng dụng Đã xong", cluster_info.get("completed_apps", 0))
     
     st.divider()
     
@@ -148,24 +148,24 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
             workers_data.append({
                 "Worker ID": w.worker_id[:20] + "..." if len(w.worker_id) > 20 else w.worker_id,
                 "Host": w.host,
-                "State": w.state,
+                "Trạng thái": w.state,
                 "Cores": f"{w.cores_used} / {w.cores}",
-                "Memory": f"{format_memory(w.memory_used)} / {format_memory(w.memory)}"
+                "Bộ nhớ": f"{format_memory(w.memory_used)} / {format_memory(w.memory)}"
             })
         
         df = pd.DataFrame(workers_data)
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("No workers found")
+        st.info("Không tìm thấy worker nào")
     
     st.divider()
     
     # ============================================
-    # Applications
+    # Ứng dụng
     # ============================================
-    st.subheader("📋 Applications")
+    st.subheader("📋 Ứng dụng")
     
-    tab_running, tab_completed = st.tabs(["🟢 Running", "✅ Completed"])
+    tab_running, tab_completed = st.tabs(["🟢 Đang chạy", "✅ Đã xong"])
     
     with tab_running:
         running_apps = spark_client.get_applications(status="running")
@@ -175,16 +175,16 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
             for app in running_apps:
                 apps_data.append({
                     "App ID": app.app_id,
-                    "Name": app.name,
-                    "State": "🟢 " + app.state,
-                    "Duration": format_duration(app.duration_ms),
+                    "Tên": app.name,
+                    "Trạng thái": "🟢 " + app.state,
+                    "Thời lượng": format_duration(app.duration_ms),
                     "Cores": app.cores
                 })
             
             df = pd.DataFrame(apps_data)
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("No running applications")
+            st.info("Không có ứng dụng đang chạy")
     
     with tab_completed:
         completed_apps = spark_client.get_applications(status="completed")
@@ -194,28 +194,28 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
             for app in completed_apps[-10:]:  # Last 10
                 apps_data.append({
                     "App ID": app.app_id,
-                    "Name": app.name,
-                    "State": "✅ " + app.state,
-                    "Duration": format_duration(app.duration_ms)
+                    "Tên": app.name,
+                    "Trạng thái": "✅ " + app.state,
+                    "Thời lượng": format_duration(app.duration_ms)
                 })
             
             df = pd.DataFrame(apps_data)
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("No completed applications")
+            st.info("Không có ứng dụng đã hoàn thành")
     
     st.divider()
     
     # ============================================
-    # Quick Actions
+    # Thao tác nhanh
     # ============================================
-    st.subheader("🚀 Quick Actions")
+    st.subheader("🚀 Thao tác nhanh")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.link_button(
-            "🌐 Open Spark UI",
+            "🌐 Mở Spark UI",
             "http://localhost:8090",
             use_container_width=True
         )
@@ -228,13 +228,13 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
         )
     
     with col3:
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Làm mới Dữ liệu", use_container_width=True):
             st.rerun()
     
-    # Job submission info
-    with st.expander("📝 Submit Spark Job"):
+    # Thông tin gửi job
+    with st.expander("📝 Gửi Spark Job"):
         st.markdown("""
-        **Submit a batch job:**
+        **Gửi một batch job:**
         ```bash
         docker exec spark-master spark-submit \\
             --master spark://spark-master:7077 \\
@@ -242,7 +242,7 @@ def render_spark_monitor(spark_client: Optional[SparkClient]):
             /opt/bitnami/spark/jobs/batch_vision_aggregator.py
         ```
         
-        **Submit a streaming job:**
+        **Gửi một streaming job:**
         ```bash
         docker exec spark-master spark-submit \\
             --master spark://spark-master:7077 \\
