@@ -8,7 +8,7 @@
 Hệ thống được tổ chức thành 7 lớp chức năng, mỗi lớp đảm nhận một vai trò cụ thể trong vòng đời dữ liệu.
 
 ### 🖼️ Data LifeCycle Visualization
-![Data LifeCycle Diagram](data_lifecycle_visual.png)
+![Data LifeCycle Diagram](platform_architecture.svg)
 *(Lưu ý: Ảnh này được generate tự động để minh họa luồng dữ liệu)*
 
 ### Sơ đồ luồng (Flowchart)

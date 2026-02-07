@@ -58,7 +58,7 @@ Trong thực tế, một hệ thống dữ liệu hiện đại thường kết 
 * **Batch Processing (Xử lý theo lô)**: Dành cho báo cáo lịch sử, độ chính xác tuyệt đối, chi phí thấp. Ví dụ: Báo cáo doanh thu cuối ngày.
 * **Streaming Processing (Xử lý luồng)**: Dành cho sự kiện thời gian thực, phản ứng nhanh. Ví dụ: Phát hiện gian lận thẻ tín dụng ngay lập tức.
 
-![Streaming vs Batch Processing](6479d34866708303b7d7767e_stream%20vs%20batch.png)
+![Streaming vs Batch Processing](stream_vs_batch.png)
 *Sự khác biệt giữa xử lý Batch (gom nhóm) và Streaming (xử lý từng sự kiện)*
 
 ---
@@ -87,9 +87,21 @@ Trong thực tế, một hệ thống dữ liệu hiện đại thường kết 
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+![Data Architecture Layers](architecture_layers.avif)
+*Các lớp kiến trúc dữ liệu chi tiết*
+
+> 💡 **Phân tích hình ảnh**:
+> Mô hình này minh họa rõ sự phân tách trách nhiệm (Separation of Concerns):
+> - **Ingest Layer**: Chỉ lo việc lấy dữ liệu vào, không xử lý logic phức tạp.
+> - **Storage Layer**: Chỉ lo lưu trữ an toàn, chi phí thấp.
+> - **Processing Layer**: Tách biệt Compute (tính toán) và Storage (lưu trữ), giúp mở rộng linh hoạt.
+> - **Consumption Layer**: Phục vụ nhiều đối tượng khác nhau (Business User, Data Scientist, App) từ cùng một nguồn dữ liệu đã xử lý.
+
+
+---
 ### 2.2 Sơ Đồ Luồng Dữ Liệu (Logical Flow)
 
-![Logical Flow Diagram](z7485552729367_ad2c3a85e40862180bfbc14c9b1abe89.jpg)
+![Logical Flow Diagram](logical_data_flow.jpg)
 *Sơ đồ luồng dữ liệu tổng quát từ Source đến Consumption*
 
 ---
@@ -109,7 +121,7 @@ Dùng để vận hành ứng dụng (tạo đơn hàng, đăng ký user...).
 * **Đặc điểm**: Dữ liệu thay đổi liên tục (INSERT, UPDATE, DELETE).
 * **Ví dụ**: MySQL lưu thông tin user, PostgreSQL lưu đơn hàng.
 
-![OLTP to OLAP Architecture](oltp.png)
+![OLTP to OLAP Architecture](oltp_vs_olap.png)
 *Sự khác biệt: OLTP tối ưu cho giao dịch nhanh, OLAP tối ưu cho phân tích dữ liệu lớn*
 
 #### B. Logs & Events
@@ -143,6 +155,18 @@ Mục tiêu là mang dữ liệu về **an toàn** và **đầy đủ**, chưa c
 > *   **Load**: Nạp vào kho đích.
 > *   Ingestion thường tương ứng với quy trình **EL (Extract-Load)**.
 
+![Data Ingestion Process](ingestion_multi_source.webp)
+*Minh họa quá trình thu thập dữ liệu đa nguồn*
+
+> 💡 **Phân tích hình ảnh**:
+> Quá trình Ingestion thực tế rất hỗn độn vì Source rất đa dạng:
+> - **Structured**: Database (CRM, ERP).
+> - **Semi-structured**: Logs, JSON, XML.
+> - **Unstructured**: Email, PDF, Images.
+> Mũi tên hội tụ về một điểm cho thấy mục tiêu của Ingestion: **Chuẩn hóa quy trình đưa mọi thứ về một đầu mối duy nhất**, dù nguồn gốc có khác nhau thế nào.
+
+
+
 ### 4.2 Các Phương Pháp Thu Thập
 
 #### Phương Pháp 1: Batch Ingestion (Định kỳ)
@@ -150,14 +174,14 @@ Cứ mỗi giờ hoặc mỗi ngày, hệ thống sẽ chạy một lần để 
 *   **Ưu điểm**: Đơn giản, dễ cài đặt.
 *   **Nhược điểm**: Có độ trễ (ví dụ: dữ liệu hôm nay thì ngày mai mới xem được).
 
-![Batch Data Pipeline](Batch_data_pipeline.webp)
+![Batch Data Pipeline](batch_pipeline.webp)
 
 #### Phương Pháp 2: Streaming Ingestion (Real-time)
 Dữ liệu vừa sinh ra sẽ được chuyển đi ngay lập tức.
 *   **CDC (Change Data Capture)**: Kỹ thuật nghe lén database log để bắt mọi thay đổi ngay khi nó xảy ra.
 *   **Message Queue (Kafka)**: Đóng vai trò như "băng chuyền" chuyển dữ liệu tốc độ cao.
 
-![CDC Architecture](73deb423-fada-4452-9f19-946154c1efd6_1882x738.png)
+![CDC Architecture](cdc_architecture.png)
 *Mô hình CDC: Bắt thay đổi từ Database Log → Đẩy vào Kafka → Người dùng hạ nguồn nhận được ngay*
 
 ### 4.3 Checklist Thiết Kế
@@ -182,7 +206,19 @@ Dữ liệu ở đây giống hệt như ở Source, chưa bị sửa đổi, c�
 
 Data Lake là một kho chứa khổng lồ, giá rẻ, có thể lưu trữ mọi loại dữ liệu (có cấu trúc, phi cấu trúc).
 
-![Data Lake Architecture](66adf1ca894645e7e754b330_648819db81ab836c5d6b0654_data_lake.png)
+![Data Lake Architecture](data_lake_architecture.png)
+
+![Data Storage Overview](storage_evolution.webp)
+*Tổng quan về lưu trữ dữ liệu đa tầng*
+
+> 💡 **Phân tích hình ảnh**:
+> Hình ảnh nhấn mạnh sự "tiến hóa" của dữ liệu trong quá trình lưu trữ:
+> - Từ **Raw Data** (hỗn độn, chưa xác định rõ giá trị).
+> - Qua các bước xử lý để trở thành **Information** (Thông tin có cấu trúc).
+> - Và cuối cùng là **Knowledge/Wisdom** (Kiến thức để ra quyết định).
+> Data Lake không chỉ là "kho chứa rác", mà là nơi bắt đầu của chuỗi giá trị này.
+
+
 
 ### 5.3 Định Dạng File (File Format)
 
@@ -234,7 +270,7 @@ Mô hình **Medallion Architecture** chia dữ liệu làm 3 lớp:
 *   **Apache Flink**: Chuyên gia xử lý luồng (Stream Processing) với độ trễ cực thấp.
 *   **dbt (data build tool)**: Công cụ hiện đại để viết logic transform bằng SQL ngay trong Data Warehouse.
 
-![Flink Stream Processing](68ed36e99e31581dedf5e80a_6686f50deea1a5fe7efc2480_redpanda_and_apache_flink.webp)
+![Flink Stream Processing](flink_stream_processing.webp)
 *Flink giúp xử lý các sự kiện liên tục không ngừng nghỉ*
 
 ---
@@ -253,7 +289,7 @@ Data Warehouse là cơ sở dữ liệu đặc biệt, không tối ưu cho ghi 
 *   **Hiện đại (Cloud)**: BigQuery, Snowflake, Redshift.
 *   **Query Engine**: Trino/Presto (cho phép query SQL trực tiếp lên Data Lake).
 
-![ETL to Data Warehouse Flow](668b9cfca7a30bf45af8e1c6_87c72f2f-ab36-49d1-82db-cc6f0e7e94a1.png)
+![ETL to Data Warehouse Flow](etl_warehouse_flow.png)
 
 ### 7.3 Mô Hình Dữ Liệu: Star Schema
 
@@ -276,7 +312,19 @@ Dùng biểu đồ, dashboard để nhìn lại quá khứ và hiện tại.
 *   **Công cụ**: Power BI, Tableau, Superset.
 *   **Câu hỏi**: "Doanh thu tháng trước bao nhiêu?", "Tại sao đơn hàng giảm?"
 
-![Analytics Consumption Layer](1697543490-analytics-consumption-layer.jpg)
+![Analytics Consumption Layer](analytics_consumption.jpg)
+
+![Dashboard Features](analytics_dashboard.webp)
+*Các tính năng tiêu biểu của Dashboard phân tích*
+
+> 💡 **Phân tích hình ảnh**:
+> Một Dashboard hiệu quả (như hình minh họa) thường trả lời được 3 câu hỏi:
+> 1.  **What happened?** (Số liệu tổng quan, KPI).
+> 2.  **Why it happened?** (Biểu đồ xu hướng, so sánh).
+> 3.  **What next?** (Gợi ý hành động).
+> Lưu ý cách bố trí: Các số to, quan trọng nhất (Big Numbers) thường nằm trên cùng bên trái.
+
+
 
 #### B. Machine Learning (AI)
 Dùng dữ liệu để dự đoán tương lai.
@@ -284,7 +332,7 @@ Dùng dữ liệu để dự đoán tương lai.
 *   **Câu hỏi**: "Khách hàng nào sắp rời bỏ?", "Sản phẩm nào user sẽ thích?"
 *   **Feature Store**: Kho chứa các "đặc trưng" đã tính toán sẵn cho AI.
 
-![Feature Store Architecture](6571531ad3fe506149b8320f_app_layer.webp)
+![Feature Store Architecture](feature_store_ml.webp)
 
 #### C. Reverse ETL (Activation)
 Đẩy dữ liệu ngược trở lại các ứng dụng vận hành.
@@ -319,6 +367,17 @@ Hệ thống camera an ninh cho pipeline.
 | **Độ khó** | Dễ triển khai, dễ sửa lỗi | Khó, phức tạp, cần kỹ thuật cao |
 | **Chi phí** | Thấp hơn | Cao hơn (hạ tầng chạy 24/7) |
 | **Quy tắc** | **Luôn bắt đầu với Batch** | Chỉ dùng Streaming khi nghiệp vụ bắt buộc |
+
+![Redpanda and Flink](hybrid_streaming_complex.webp)
+*Mô hình Streaming phức tạp với Redpanda và Flink*
+
+> 💡 **Phân tích hình ảnh**:
+> Đây là kiến trúc "hạng nặng" cho Streaming:
+> - **Redpanda (thay thế Kafka)**: Đóng vai trò bộ đệm tốc độ cao, lưu trữ sự kiện.
+> - **Flink**: Đóng vai trò bộ não xử lý thời gian thực (Stateful processing).
+> - **Complexity**: Bạn có thể thấy nhiều mũi tên đan xen, minh họa cho việc xử lý Streaming phức tạp hơn Batch rất nhiều (phải xử lý out-of-order data, windowing, watermarks).
+
+
 
 ### 10.2 Data Lake vs Data Warehouse vs Lakehouse
 

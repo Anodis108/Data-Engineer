@@ -228,7 +228,7 @@ flowchart LR
   MINIO -. "data tracked by dvc<br/>(optional)" .-> PIPE
 ```
 
-![Data Platform](doc/data_platform.svg)
+![Architecture Overview](doc/platform_architecture.svg)
 
 **Cách đọc nhanh (Kiến trúc 7 Layer):**
 *   **Layer 1 (Source)**: Dữ liệu sinh ra từ **Camera AI** (Video/Image) và **Postgres OLTP** (Transaction).
@@ -325,7 +325,7 @@ flowchart LR
 
 ```
 
-![Vision Event](doc/vision_event.svg)
+![Vision Pipeline](doc/vision_pipeline_events.svg)
 
 YOLO → event → RabbitMQ/Kafka → Postgres/MinIO → Hive Metastore → Trino → DBeaver/BI
 
@@ -528,6 +528,8 @@ docker compose up -d prometheus grafana node-exporter kafka-exporter postgres-ex
 
 Repo phục vụ học tập và demo pipeline production-like.
 
+![Data Processes](doc/data_processing_flow.svg)
+
 Sơ đồ tư duy tổng hợp:
 - Dữ liệu sinh ra từ đâu? -> cdc-postgres (nghiệp vụ) và Code Python (camera).
 - Dữ liệu đi đường nào? -> Đi qua kafka (CDC) hoặc rabbitmq (Alerts).
@@ -541,6 +543,8 @@ Sơ đồ tư duy tổng hợp:
 ## 11) Testing Suite ⭐ NEW
 
 Hệ thống đi kèm với bộ test toàn diện sử dụng **Pytest** để đảm bảo tính ổn định của các layer.
+
+![Azure Databricks Flow](doc/azure_databricks_ingestion.svg)
 
 ### Cấu trúc bộ test:
 - `tests/test_pipeline.py`: Kiểm tra sức khỏe (Health Check) toàn bộ 7 lớp.
