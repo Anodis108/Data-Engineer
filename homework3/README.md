@@ -13,6 +13,7 @@ Mục tiêu của repo:
 - Query dữ liệu bằng **Trino + Hive Metastore**.
 - Tách **alert/event** bằng **RabbitMQ**.
 - Version hóa **dataset/model** bằng **DVC**.
+- **Tài liệu chi tiết**: [Data Lifecycle & Architecture](doc/data-lifecycle/DATA_LIFECYCLE.md) ⭐ NEW.
 
 ---
 
@@ -227,7 +228,7 @@ flowchart LR
   MINIO -. "data tracked by dvc<br/>(optional)" .-> PIPE
 ```
 
-![Data Platform](data_platform.svg)
+![Data Platform](doc/data_platform.svg)
 
 **Cách đọc nhanh (Kiến trúc 7 Layer):**
 *   **Layer 1 (Source)**: Dữ liệu sinh ra từ **Camera AI** (Video/Image) và **Postgres OLTP** (Transaction).
@@ -324,7 +325,7 @@ flowchart LR
 
 ```
 
-![Vision Event](vision_event.svg)
+![Vision Event](doc/vision_event.svg)
 
 YOLO → event → RabbitMQ/Kafka → Postgres/MinIO → Hive Metastore → Trino → DBeaver/BI
 
