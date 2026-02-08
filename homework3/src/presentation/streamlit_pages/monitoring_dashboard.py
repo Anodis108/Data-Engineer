@@ -164,7 +164,8 @@ docker compose up -d airflow-webserver airflow-scheduler
                             st.markdown(f"**Lịch trình:** `{dag.get('schedule_interval', 'None')}`")
                         with col2:
                             st.markdown(f"**Trạng thái:** {'Đã tạm dừng' if is_paused else 'Đang hoạt động'}")
-                            st.markdown(f"**Tags:** {', '.join(dag.get('tags', []))}")
+                            tags = [t.get('name', t) if isinstance(t, dict) else t for t in dag.get('tags', [])]
+                            st.markdown(f"**Tags:** {', '.join(tags)}")
                         
                         # Hiển thị các lần chạy gần đây
                         runs = get_airflow_dag_runs(dag_id, 3)

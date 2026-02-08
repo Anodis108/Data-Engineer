@@ -152,17 +152,31 @@ class SparkClient:
             # Fallback sang master JSON
             return self._get_apps_from_master_json(status)
         
-        apps = []
-        for app_data in resp.json():
-            apps.append(SparkApplication.from_json(app_data))
-        
-        return apps
+        try:
+            apps_data = resp.json()
+            if not isinstance(apps_data, list):
+                return self._get_apps_from_master_json(status)
+            
+            apps = []
+            for app_data in apps_data:
+                apps.append(SparkApplication.from_json(app_data))
+            return apps
+        except (requests.exceptions.JSONDecodeError, ValueError):
+            logger.warning(f"Failed to decode JSON from Spark History API: {endpoint}")
+            return self._get_apps_from_master_json(status)
     
     def _get_apps_from_master_json(self, status: str) -> List[SparkApplication]:
         """Phương thức dự phòng để lấy apps từ master JSON endpoint."""
         # Fallback: Scrape apps từ Master JSON
-        resp = requests.get(f"{self.config.master_url}/json/", timeout=5)
-        data = resp.json()
+        try:
+            resp = requests.get(f"{self.config.master_url}/json/", timeout=5)
+            if resp.status_code != 200:
+                logger.warning(f"Spark Master JSON returned status {resp.status_code}")
+                return []
+            data = resp.json()
+        except Exception as e:
+            logger.warning(f"Failed to fetch or decode Spark Master JSON: {e}")
+            return []
         
         apps = []
         
