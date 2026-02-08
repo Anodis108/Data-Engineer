@@ -405,7 +405,7 @@ services:
       # S3/MinIO config for Spark
       - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/*
     volumes:
-      - ../src/jobs/spark:/opt/bitnami/spark/jobs:ro
+      - ./spark/jobs:/opt/bitnami/spark/jobs:ro
       - ./spark/conf:/opt/bitnami/spark/conf/custom:ro
       - spark_data:/opt/bitnami/spark/work
     healthcheck:
@@ -436,7 +436,7 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     volumes:
-      - ../src/jobs/spark:/opt/spark/jobs:ro
+      - ./spark/jobs:/opt/spark/jobs:ro
       - spark_data:/opt/spark/work
 
   # --- Flink ---
@@ -457,7 +457,7 @@ services:
         state.backend: hashmap
         state.checkpoints.dir: file:///tmp/flink-checkpoints
     volumes:
-      - ../src/jobs/flink:/opt/flink/jobs:ro
+      - ./flink/jobs:/opt/flink/jobs:ro
       - ./flink/lib:/opt/flink/lib/custom:ro
       - flink_data:/tmp/flink-checkpoints
     healthcheck:
@@ -484,7 +484,7 @@ services:
         parallelism.default: 2
         taskmanager.memory.process.size: 2g
     volumes:
-      - ../src/jobs/flink:/opt/flink/jobs:ro
+      - ./flink/jobs:/opt/flink/jobs:ro
       - ./flink/lib:/opt/flink/lib/custom:ro
       - flink_data:/tmp/flink-checkpoints
 
@@ -555,7 +555,7 @@ services:
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     user: "0:0"
     volumes:
-      - ../src/jobs/airflow:/opt/airflow/dags
+      - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
     command:
@@ -607,7 +607,7 @@ services:
     ports:
       - "8085:8080"
     volumes:
-      - ../src/jobs/airflow:/opt/airflow/dags
+      - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - /var/run/docker.sock:/var/run/docker.sock
@@ -643,7 +643,7 @@ services:
       AIRFLOW_CONN_TRINO_DEFAULT: trino://trino-coordinator:8080
       AIRFLOW_CONN_RABBITMQ_DEFAULT: amqp://admin:admin123@rabbitmq1:5672/
     volumes:
-      - ../src/jobs/airflow:/opt/airflow/dags
+      - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - /var/run/docker.sock:/var/run/docker.sock
