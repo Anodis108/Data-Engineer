@@ -335,7 +335,8 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "up{job=\"spark-master\"}",
+                    "expr": "up{job=~\"spark-.*\"}",
+                    "legendFormat": "{{service}}",
                     "refId": "A"
                 }
             ],

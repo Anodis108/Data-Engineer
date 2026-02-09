@@ -44,11 +44,11 @@ services:
     ports:
       - "5433:5432"   # map to host 5433 to avoid conflict with metastore-db
     environment:
-      POSTGRES_USER: dbz
-      POSTGRES_PASSWORD: dbz
-      POSTGRES_DB: inventory
+      POSTGRES_USER: ${CDC_POSTGRES_USER:-dbz}
+      POSTGRES_PASSWORD: ${CDC_POSTGRES_PASSWORD:-dbz}
+      POSTGRES_DB: ${CDC_POSTGRES_DB:-inventory}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dbz -d inventory"]
+      test: ["CMD-SHELL", "pg_isready -U ${CDC_POSTGRES_USER:-dbz} -d ${CDC_POSTGRES_DB:-inventory}"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -61,12 +61,12 @@ services:
       cdc-postgres:
         condition: service_healthy
     environment:
-      PGPASSWORD: dbz
+      PGPASSWORD: ${CDC_POSTGRES_PASSWORD:-dbz}
     volumes:
       - ./scripts/cdc_bootstrap.sql:/cdc_bootstrap.sql:ro
     entrypoint: >
       bash -lc "
-      psql -h cdc-postgres -U dbz -d inventory -f /cdc_bootstrap.sql &&
+      psql -h cdc-postgres -U ${CDC_POSTGRES_USER:-dbz} -d ${CDC_POSTGRES_DB:-inventory} -f /cdc_bootstrap.sql &&
       echo '✅ CDC source table ready' &&
       exit 0
       "
@@ -181,9 +181,9 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin123
-      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS:-admin123}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-mysecretcookie}
     volumes:
       - rabbitmq1_data:/var/lib/rabbitmq
     healthcheck:
@@ -201,9 +201,9 @@ services:
       - "5673:5672"
       - "15673:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin123
-      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS:-admin123}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-mysecretcookie}
     volumes:
       - rabbitmq2_data:/var/lib/rabbitmq
     healthcheck:
@@ -222,7 +222,7 @@ services:
       rabbitmq2:
         condition: service_healthy
     environment:
-      RABBITMQ_ERLANG_COOKIE: "mysecretcookie"
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-mysecretcookie}
     entrypoint: >
       bash -lc "
         set -e
@@ -251,6 +251,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_PROMETHEUS_AUTH_TYPE: "public"
     ports:
       - "9000:9000"  # S3 API
       - "9001:9001"  # Console UI
@@ -289,15 +290,15 @@ services:
     hostname: metastore-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: metastore
-      POSTGRES_USER: hive
-      POSTGRES_PASSWORD: hive_password
+      POSTGRES_DB: ${HMS_DB_NAME:-metastore}
+      POSTGRES_USER: ${HMS_DB_USER:-hive}
+      POSTGRES_PASSWORD: ${HMS_DB_PASSWORD:-hive_password}
     ports:
       - "5432:5432"
     volumes:
       - metastore_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      test: ["CMD-SHELL", "pg_isready -U ${HMS_DB_USER:-hive} -d ${HMS_DB_NAME:-metastore}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -310,9 +311,9 @@ services:
         condition: service_healthy
     environment:
       HIVE_METASTORE_DRIVER: org.postgresql.Driver
-      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
-      HIVE_METASTORE_USER: hive
-      HIVE_METASTORE_PASSWORD: hive_password
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/${HMS_DB_NAME:-metastore}
+      HIVE_METASTORE_USER: ${HMS_DB_USER:-hive}
+      HIVE_METASTORE_PASSWORD: ${HMS_DB_PASSWORD:-hive_password}
       # MinIO / S3
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
@@ -347,9 +348,9 @@ services:
       - "9083:9083"
     environment:
       HIVE_METASTORE_DRIVER: org.postgresql.Driver
-      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/metastore
-      HIVE_METASTORE_USER: hive
-      HIVE_METASTORE_PASSWORD: hive_password
+      HIVE_METASTORE_JDBC_URL: jdbc:postgresql://metastore-db:5432/${HMS_DB_NAME:-metastore}
+      HIVE_METASTORE_USER: ${HMS_DB_USER:-hive}
+      HIVE_METASTORE_PASSWORD: ${HMS_DB_PASSWORD:-hive_password}
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
@@ -390,7 +391,7 @@ services:
   spark-master:
     image: apache/spark:latest
     container_name: spark-master
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --properties-file /opt/spark/conf/spark-defaults.conf
     hostname: spark-master
     restart: unless-stopped
     ports:
@@ -398,16 +399,23 @@ services:
       - "8090:8080"   # Spark Master Web UI (avoid conflict with Trino 8080)
     environment:
       - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_CONF_DIR=/opt/spark/conf
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
+      # Enable built-in Prometheus metrics for Spark and force ALIVE status
+      - SPARK_MASTER_OPTS=-Dspark.ui.prometheus.enabled=true -Dspark.deploy.recoveryMode=NONE -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.ui.prometheus.enabled=true -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
       # S3/MinIO config for Spark
-      - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/*
+      - SPARK_EXTRA_CLASSPATH=/opt/spark/jars/*
     volumes:
-      - ./spark/jobs:/opt/bitnami/spark/jobs:ro
-      - ./spark/conf:/opt/bitnami/spark/conf/custom:ro
-      - spark_data:/opt/bitnami/spark/work
+      - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf:/opt/spark/conf:ro
+      - spark_data:/opt/spark/work
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/json/ > /dev/null"]
       interval: 30s
@@ -431,12 +439,17 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2G
       - SPARK_WORKER_CORES=2
+      - SPARK_CONF_DIR=/opt/spark/conf
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
+      # Enable built-in Prometheus metrics for Spark
+      - SPARK_WORKER_OPTS=-Dspark.ui.prometheus.enabled=true -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
+      - SPARK_DAEMON_JAVA_OPTS=-Dspark.ui.prometheus.enabled=true -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
     volumes:
       - ./spark/jobs:/opt/spark/jobs:ro
+      - ./spark/conf:/opt/spark/conf:ro
       - spark_data:/opt/spark/work
 
   # --- Flink ---
@@ -448,6 +461,7 @@ services:
     ports:
       - "8092:8081"   # Flink Web UI (avoid conflict with Kafka UI 8081)
       - "6123:6123"   # Flink RPC
+      - "9249:9249"   # Prometheus metrics
     command: jobmanager
     environment:
       - |
@@ -456,6 +470,9 @@ services:
         parallelism.default: 2
         state.backend: hashmap
         state.checkpoints.dir: file:///tmp/flink-checkpoints
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
     volumes:
       - ./flink/jobs:/opt/flink/jobs:ro
       - ./flink/lib:/opt/flink/lib/custom:ro
@@ -483,6 +500,9 @@ services:
         taskmanager.numberOfTaskSlots: 4
         parallelism.default: 2
         taskmanager.memory.process.size: 2g
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
     volumes:
       - ./flink/jobs:/opt/flink/jobs:ro
       - ./flink/lib:/opt/flink/lib/custom:ro
@@ -530,13 +550,13 @@ services:
     hostname: airflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME:-airflow}
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_DB_USER:-airflow} -d ${AIRFLOW_DB_NAME:-airflow}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -569,8 +589,8 @@ services:
 
           echo "=== CREATE ADMIN USER ==="
           airflow users create \
-            --username admin \
-            --password admin123 \
+            --username ${AIRFLOW_ADMIN_USER:-admin} \
+            --password ${AIRFLOW_ADMIN_PASSWORD:-admin123} \
             --firstname Admin \
             --lastname User \
             --role Admin \
@@ -589,21 +609,21 @@ services:
         condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@airflow-postgres/${AIRFLOW_DB_NAME:-airflow}
       AIRFLOW__CORE__FERNET_KEY: ''
-      AIRFLOW__WEBSERVER__SECRET_KEY: 'mini-datalake-secret-key-2024'
+      AIRFLOW__WEBSERVER__SECRET_KEY: '${AIRFLOW_WEBSERVER_SECRET_KEY:-mini-datalake-secret-key-2024}'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
       AIRFLOW__METRICS__STATSD_ON: 'false'
       AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
       # Environment connections
       AIRFLOW_CONN_SPARK_DEFAULT: spark://spark-master:7077
-      AIRFLOW_CONN_MINIO_S3: s3://minioadmin:minioadmin123@/?host=http://minio:9000
-      AIRFLOW_CONN_CDC_POSTGRES: postgresql://dbz:dbz@cdc-postgres:5432/inventory
+      AIRFLOW_CONN_MINIO_S3: s3://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin123}@/?host=http://minio:9000
+      AIRFLOW_CONN_CDC_POSTGRES: postgresql://${CDC_POSTGRES_USER:-dbz}:${CDC_POSTGRES_PASSWORD:-dbz}@cdc-postgres:5432/${CDC_POSTGRES_DB:-inventory}
       AIRFLOW_CONN_KAFKA_DEFAULT: kafka://kafka:29092
       AIRFLOW_CONN_HIVE_METASTORE: thrift://hive-metastore:9083
       AIRFLOW_CONN_TRINO_DEFAULT: trino://trino-coordinator:8080
-      AIRFLOW_CONN_RABBITMQ_DEFAULT: amqp://admin:admin123@rabbitmq1:5672/
+      AIRFLOW_CONN_RABBITMQ_DEFAULT: amqp://${RABBIT_USER:-admin}:${RABBIT_PASS:-admin123}@rabbitmq1:5672/
     ports:
       - "8085:8080"
     volumes:
@@ -629,7 +649,7 @@ services:
         condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@airflow-postgres/${AIRFLOW_DB_NAME:-airflow}
       AIRFLOW__CORE__FERNET_KEY: ''
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
@@ -683,8 +703,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
       GF_SERVER_ROOT_URL: http://localhost:3000
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/data_pipeline_overview.json
@@ -734,7 +754,7 @@ services:
     hostname: postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "postgresql://dbz:dbz@cdc-postgres:5432/inventory?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${CDC_POSTGRES_USER:-dbz}:${CDC_POSTGRES_PASSWORD:-dbz}@cdc-postgres:5432/${CDC_POSTGRES_DB:-inventory}?sslmode=disable"
     ports:
       - "9187:9187"
     depends_on:

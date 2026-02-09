@@ -40,7 +40,7 @@ scrape_configs:
   # DATA STORAGE (MinIO)
   # =========================
   - job_name: 'minio'
-    metrics_path: /minio/v2/metrics/cluster
+    metrics_path: /minio/v2/metrics/bucket
     scheme: http
     static_configs:
       - targets: ['minio:9000']
@@ -73,7 +73,7 @@ scrape_configs:
   # Note: Requires Spark to expose metrics endpoint
   # =========================
   - job_name: 'spark-master'
-    metrics_path: /metrics/master/prometheus
+    metrics_path: /metrics/prometheus/
     scrape_interval: 30s
     scrape_timeout: 10s
     static_configs:
@@ -81,7 +81,17 @@ scrape_configs:
         labels:
           service: 'spark-master'
           layer: 'processing'
-    # Ignore if Spark is not running
+    honor_labels: true
+
+  - job_name: 'spark-worker'
+    metrics_path: /metrics/prometheus/
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['spark-worker:8081']
+        labels:
+          service: 'spark-worker'
+          layer: 'processing'
     honor_labels: true
 
   # =========================
